@@ -5,13 +5,13 @@
   "main": "index.js",
   "license": "MIT",
   "scripts": {
-    "start": "ts-node ./bin/run.ts",
+    "start": "node ./exec/run.js",
     "build": "yarn run build:typescript",
     "build:typescript": "tsc -p .",
     "lint": "yarn run lint:typescript",
     "lint:typescript": "tslint --format stylish --project .",
     "lint:fix": "yarn run lint:fix:typescript",
-    "lint:fix:typescript": "prettier --config prettier-config.json --write \"{src,bin,test}/**/*.ts\""
+    "lint:fix:typescript": "prettier --config prettier-config.json --write \"{src,exec,test}/**/*.ts\""
   },
   "dependencies": {
     "@eth-optimism/contracts": "^0.0.2-alpha.13",

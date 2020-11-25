@@ -1,6 +1,6 @@
 import { Wallet } from 'ethers'
 import { JsonRpcProvider } from '@ethersproject/providers'
-import { MessageRelayerService } from '../src'
+import { MessageRelayerService } from '../services/message-relayer.service'
 
 require('dotenv').config()
 
@@ -14,7 +14,7 @@ const POLLING_INTERVAL = env.POLLING_INTERVAL || '5000'
 const L2_BLOCK_OFFSET = env.L2_BLOCK_OFFSET || '1'
 const FROM_L2_TRANSACTION_INDEX = env.FROM_L2_TRANSACTION_INDEX || '0'
 
-;(async () => {
+const main = async () => {
   if (!ADDRESS_MANAGER_ADDRESS) {
     throw new Error('Must pass ADDRESS_MANAGER_ADDRESS')
   }
@@ -36,7 +36,6 @@ const FROM_L2_TRANSACTION_INDEX = env.FROM_L2_TRANSACTION_INDEX || '0'
   })
 
   await service.start()
-})().catch((err) => {
-  console.log(err)
-  process.exit(1)
-})
+}
+
+export default main
