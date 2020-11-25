@@ -72,18 +72,15 @@ export class BaseService<TServiceOptions> {
   /**
    * Internal init function. Parent should implement.
    */
-  protected async _init(): Promise<void> {
-  }
+  protected async _init(): Promise<void> {}
 
   /**
    * Internal start function. Parent should implement.
    */
-  protected async _start(): Promise<void> {
-  }
+  protected async _start(): Promise<void> {}
 
   /**
    * Internal stop function. Parent should implement.
    */
-  protected async _stop(): Promise<void> {
-  }
+  protected async _stop(): Promise<void> {}
 }

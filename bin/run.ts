@@ -32,11 +32,11 @@ const FROM_L2_TRANSACTION_INDEX = env.FROM_L2_TRANSACTION_INDEX || '0'
     relayGasLimit: parseInt(RELAY_GAS_LIMIT, 10),
     fromL2TransactionIndex: parseInt(FROM_L2_TRANSACTION_INDEX, 10),
     pollingInterval: parseInt(POLLING_INTERVAL, 10),
-    l2BlockOffset: parseInt(L2_BLOCK_OFFSET, 10)
+    l2BlockOffset: parseInt(L2_BLOCK_OFFSET, 10),
   })
 
   await service.start()
-})().catch(err => {
+})().catch((err) => {
   console.log(err)
   process.exit(1)
 })

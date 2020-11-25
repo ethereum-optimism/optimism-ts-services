@@ -56,6 +56,8 @@ export class Logger {
    * @param color Color to print the log with.
    */
   private _log(message: string, category: string, color: string): void {
-    console.log(`${colors[color](`[${this.namespace}] [${category}]`)}: ${message}`)
+    console.log(
+      `${colors[color](`[${this.namespace}] [${category}]`)}: ${message}`
+    )
   }
 }
