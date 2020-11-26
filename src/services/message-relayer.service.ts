@@ -105,9 +105,9 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
     )
 
     this.logger.info('Connecting to OVM_L2ToL1MessagePasser...')
-    this.state.OVM_L2ToL1MessagePasser = await loadContractFromManager(
+    this.state.OVM_L2ToL1MessagePasser = loadContract(
       'OVM_L2ToL1MessagePasser',
-      this.state.Lib_AddressManager,
+      '0x4200000000000000000000000000000000000000',
       this.options.l2RpcProvider
     )
     this.logger.info(
@@ -154,8 +154,10 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
         }
 
         this.logger.interesting(
-          `Found a total of ${this.state.nextUnfinalizedTxHeight -
-            this.state.lastFinalizedTxHeight} finalized transaction(s).`
+          `Found a total of ${
+            this.state.nextUnfinalizedTxHeight -
+            this.state.lastFinalizedTxHeight
+          } finalized transaction(s).`
         )
 
         const messages = await this._getSentMessages(
