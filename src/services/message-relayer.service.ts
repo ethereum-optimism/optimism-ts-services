@@ -147,10 +147,8 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
         }
 
         this.logger.interesting(
-          `Found a total of ${
-            this.state.nextUnfinalizedTxHeight -
-            this.state.lastFinalizedTxHeight
-          } finalized transaction(s).`
+          `Found a total of ${this.state.nextUnfinalizedTxHeight -
+            this.state.lastFinalizedTxHeight} finalized transaction(s).`
         )
 
         const messages = await this._getSentMessages(

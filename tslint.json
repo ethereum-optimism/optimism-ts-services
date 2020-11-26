@@ -24,7 +24,8 @@
     "prettier": true,
     "semicolon": false,
     "variable-name": false,
-    "no-focused-test": true
+    "no-focused-test": true,
+    "prettier": [true, "./prettier-config.json"]
   },
   "linterOptions": {
     "exclude": [
