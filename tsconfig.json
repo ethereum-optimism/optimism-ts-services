@@ -19,5 +19,7 @@
       "node_modules/@types"
     ]
   },
-  "include": ["*.ts", "**/*.ts"]
+  "include": [
+    "src/**/*.ts"
+  ]
 }
