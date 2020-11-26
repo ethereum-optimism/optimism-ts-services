@@ -7,6 +7,7 @@ import { Logger } from '../utils/logger'
  */
 export class BaseService<TServiceOptions> {
   protected name: string
+  protected defaultOptions: Partial<TServiceOptions>
   protected logger: Logger
   protected initialized: boolean = false
   protected running: boolean = false
@@ -14,7 +15,12 @@ export class BaseService<TServiceOptions> {
   /**
    * @param options Options to pass to the service.
    */
-  constructor(protected options: TServiceOptions) {}
+  constructor(protected options: TServiceOptions) {
+    this.options = {
+      ...this.defaultOptions,
+      ...this.options,
+    }
+  }
 
   /**
    * Initializes the service.
