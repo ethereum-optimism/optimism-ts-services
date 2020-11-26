@@ -33,7 +33,6 @@
     "@types/sinon-chai": "^3.2.4",
     "chai": "^4.2.0",
     "chai-as-promised": "^7.1.1",
-    "ganache-core": "^2.13.1",
     "mocha": "^6.1.4",
     "prettier": "^2.2.0",
     "rimraf": "^2.6.3",
