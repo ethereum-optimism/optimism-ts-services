@@ -167,20 +167,24 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
           continue
         }
 
-        // 1. Retrieve proof data for the given state root.
+        this.logger.info(`Retrieving all relevant proof data for transaction at index: ${transactionIndex}`)
         const proof = await this._getTxFraudProofData(transactionIndex)
 
-        // 2. Check whether the fraud proof process has already been started for that root.
+        this.logger.info(`Checking for an existing state transitioner...`)
         let stateTransitionerAddress = await this._getStateTransitioner(
           transactionIndex
         )
 
         // 3. If not, start the fraud proof process.
         if (stateTransitionerAddress === ZERO_ADDRESS) {
+          this.logger.info(`Transaction does not have an existing state transitioner, initializing...`)
           await this._initializeFraudVerification(proof)
+
+          this.logger.info(`Retrieving the new state transitione address...`)
           stateTransitionerAddress = await this._getStateTransitioner(
             transactionIndex
           )
+          this.logger.info(`State transitioner is at address: ${stateTransitionerAddress}`)
         }
 
         const OVM_StateTransitioner = loadContract(
@@ -189,12 +193,14 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
           this.options.l1RpcProvider
         )
 
+        this.logger.info(`Loading the corresponding state manager...`)
         const stateManagerAddress = await OVM_StateTransitioner.stateManager()
         const OVM_StateManager = loadContract(
           'OVM_StateManager',
           stateManagerAddress,
           this.options.l1RpcProvider
         )
+        this.logger.info(`State manager is at address: ${stateManagerAddress}`)
 
         if (
           (await OVM_StateTransitioner.phase()) ===
@@ -440,15 +446,31 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
     return accountTries
   }
 
+  /**
+   * Resolves the address of the OVM_StateTransitioner for a given transaction index. If this
+   * function returns the zero address, then the fraud process has not yet been initialized.
+   * @param transactionIndex Index of the transaction to retrieve a state transitioner for.
+   * @return Address of the transaction's state transitioner.
+   */
   private async _getStateTransitioner(
     transactionIndex: number
   ): Promise<string> {
     return this.state.OVM_FraudVerifier.stateTransitioners(transactionIndex)
   }
 
+  /**
+   * Simple mechanism for deploying an exact bytecode to a given address. Resulting contract will
+   * have code exactly matching the given `code` variable, and none of the code will be executed
+   * during creation.
+   * @param code Code to store at a given address.
+   * @return Address of the newly created contract.
+   */
   private async _deployContractCode(code: string): Promise<string> {
+    // "Magic" prefix to be prepended to the contract code. Contains a series of opcodes that will
+    // copy the given code into memory and return it, thereby storing at the contract address.
     const prefix = '0x38600D0380600D6000396000f3'
-    const deployCode = prefix + code.slice(2)
+    const deployCode = prefix + toHexString(code).slice(2)
+
     const response = await this.options.l1Wallet.sendTransaction({
       to: null,
       data: deployCode,
