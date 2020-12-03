@@ -7,7 +7,10 @@ export class L2ProviderWrapper {
   constructor(public provider: JsonRpcProvider) {}
 
   public async getStateRoot(index: number): Promise<string> {
-    const block = await this.provider.send('eth_getBlockByNumber', [toUnpaddedHexString(index), false])
+    const block = await this.provider.send('eth_getBlockByNumber', [
+      toUnpaddedHexString(index),
+      false,
+    ])
     return block.stateRoot
   }
 
@@ -20,11 +23,26 @@ export class L2ProviderWrapper {
     return transaction.input
   }
 
-  public async getProof(index: number, address: string, slots: string[] = []): Promise<any> {
-    return this.provider.send('eth_getProof', [address, slots, toUnpaddedHexString(index)])
+  public async getProof(
+    index: number,
+    address: string,
+    slots: string[] = []
+  ): Promise<any> {
+    return this.provider.send('eth_getProof', [
+      address,
+      slots,
+      toUnpaddedHexString(index),
+    ])
   }
 
   public async getStateDiffProof(index: number): Promise<StateDiffProof> {
-    return this.provider.send('eth_getStateDiffProof', [toUnpaddedHexString(index)])
+    const proof = await this.provider.send('eth_getStateDiffProof', [
+      toUnpaddedHexString(index),
+    ])
+
+    return {
+      header: proof.header,
+      accountStateProofs: proof.accounts,
+    }
   }
 }

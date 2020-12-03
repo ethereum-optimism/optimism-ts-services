@@ -52,7 +52,7 @@ export interface StateRootBatchProof {
 }
 
 export interface TransactionBatchProof {
-  transaction: SequencerTransaction
+  transaction: OvmTransaction
   transactionChainElement: TransactionChainElement
   transactionBatchHeader: TransactionBatchHeader
   transactionProof: TransactionProof
@@ -64,6 +64,22 @@ export enum StateTransitionPhase {
   COMPLETE,
 }
 
+export interface AccountStateProof {
+  address: string
+  accountProof: string[]
+  balance: string
+  nonce: string
+  codeHash: string
+  storageHash: string
+  storageProof: StorageStateProof[]
+}
+
+export interface StorageStateProof {
+  key: string
+  value: string
+  proof: string[]
+}
+
 export interface StateDiffProof {
   header: {
     number: number
@@ -72,26 +88,10 @@ export interface StateDiffProof {
     timestamp: number
   }
 
-  accounts: [
-    {
-      address: string
-      accountProof: string[]
-      balance: string
-      codeHash: string
-      nonce: string
-      storageHash: string
-      mutated: boolean
-      storageProof: Array<{
-        key: string
-        value: string
-        proof: string[]
-        mutated: boolean
-      }>
-    }
-  ]
+  accountStateProofs: AccountStateProof[]
 }
 
-export interface SequencerTransaction {
+export interface OvmTransaction {
   blockNumber: number
   timestamp: number
   entrypoint: string
@@ -102,23 +102,15 @@ export interface SequencerTransaction {
 }
 
 export interface FraudProofData {
-  proof: StateDiffProof
+  stateDiffProof: StateDiffProof
+  transactionProof: TransactionBatchProof
+  preStateRootProof: StateRootBatchProof
+  postStateRootProof: StateRootBatchProof
+
   stateTrie: BaseTrie
   storageTries: {
     [address: string]: SecureTrie
   }
-
-  transaction: string
-  transactionIndex: number
-  transactionProof: TransactionBatchProof
-
-  preStateRoot: string
-  preStateRootIndex: number
-  preStateRootProof: StateRootBatchProof
-
-  postStateRoot: string
-  postStateRootIndex: number
-  postStateRootProof: StateRootBatchProof
 }
 
 export interface TransactionChainElement {
