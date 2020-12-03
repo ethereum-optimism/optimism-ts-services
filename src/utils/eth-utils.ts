@@ -6,7 +6,7 @@ import { toHexString } from './hex-utils'
 export const encodeAccountState = (state: Partial<any>): Buffer => {
   return rlp.encode([
     state.nonce || 0,
-    state.balance.toHexString() || 0,
+    state.balance.toNumber() || 0,
     state.storageRoot || '0x' + '00'.repeat(32),
     state.codeHash || '0x' + '00'.repeat(32),
   ])

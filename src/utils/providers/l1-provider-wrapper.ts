@@ -1,5 +1,5 @@
 import { JsonRpcProvider } from '@ethersproject/providers'
-import { ethers, Event, Contract } from 'ethers'
+import { ethers, Event, Contract, BigNumber } from 'ethers'
 import { MerkleTree } from 'merkletreejs'
 
 import {
@@ -7,7 +7,10 @@ import {
   StateRootBatchProof,
   TransactionBatchHeader,
   TransactionBatchProof,
+  TransactionChainElement,
+  SequencerTransaction,
 } from '../../types/ovm.types'
+import { fromHexString, toHexString } from '../hex-utils'
 
 export class L1ProviderWrapper {
   constructor(
@@ -84,7 +87,7 @@ export class L1ProviderWrapper {
 
     const tree = new MerkleTree(leaves, hash)
     const batchIndex = index - batchHeader.prevTotalElements.toNumber()
-    const treeProof = tree.getProof(leaves[index], index).map((element) => {
+    const treeProof = tree.getProof(leaves[batchIndex], batchIndex).map((element) => {
       return element.data
     })
 
@@ -116,7 +119,10 @@ export class L1ProviderWrapper {
     }
   }
 
-  public async getBatchTransactions(index: number): Promise<string> {
+  public async getBatchTransactions(index: number): Promise<Array<{
+    transaction: SequencerTransaction,
+    transactionChainElement: TransactionChainElement
+  }>> {
     const event = await this._getTransactionBatchEvent(index)
 
     if (!event) {
@@ -127,14 +133,54 @@ export class L1ProviderWrapper {
       event.transactionHash
     )
 
-    const [
-      transactions,
-    ] = this.OVM_StateCommitmentChain.interface.decodeFunctionData(
-      'appendTransactionBatch',
-      transaction.data
-    )
+    if ((event as any).isSequencerBatch) {
+      const transactions = []
+      const txdata = fromHexString(transaction.data)
+      const shouldStartAtBatch = BigNumber.from(txdata.slice(4, 9))
+      const totalElementsToAppend = BigNumber.from(txdata.slice(9, 12))
+      const numContexts = BigNumber.from(txdata.slice(12, 15))
 
-    return transactions
+      let nextTxPointer = 15 + 16 * numContexts.toNumber()
+      for (let i = 0; i < numContexts.toNumber(); i++) {
+        const contextPointer = 15 + 16 * i
+        const context = {
+          numSequencedTransactions: BigNumber.from(txdata.slice(contextPointer, contextPointer + 3)),
+          numSubsequentQueueTransactions: BigNumber.from(txdata.slice(contextPointer + 3, contextPointer + 6)),
+          ctxTimestamp: BigNumber.from(txdata.slice(contextPointer + 6, contextPointer + 11)),
+          ctxBlockNumber: BigNumber.from(txdata.slice(contextPointer + 11, contextPointer + 16)),
+        }
+
+        for (let j = 0; j < context.numSequencedTransactions.toNumber(); j++) {
+          const txDataLength = BigNumber.from(txdata.slice(nextTxPointer, nextTxPointer + 3))
+          const txData = txdata.slice(nextTxPointer + 3, nextTxPointer + 3 + txDataLength.toNumber())
+
+          transactions.push({
+            transaction: {
+              blockNumber: context.ctxBlockNumber.toNumber(),
+              timestamp: context.ctxTimestamp.toNumber(),
+              gasLimit: 12000000,
+              entrypoint: '0x4200000000000000000000000000000000000005',
+              l1TxOrigin: '0x' + '00'.repeat(20),
+              l1QueueOrigin: 0,
+              data: toHexString(txData),
+            },
+            transactionChainElement: {
+              isSequenced: true,
+              queueIndex: 0,
+              timestamp: context.ctxTimestamp.toNumber(),
+              blockNumber: context.ctxBlockNumber.toNumber(),
+              txData: toHexString(txData)
+            }
+          })
+
+          nextTxPointer += 3 + txDataLength.toNumber()
+        }
+      }
+
+      return transactions
+    } else {
+      return []
+    }
   }
 
   public async getTransactionBatchProof(
@@ -150,7 +196,15 @@ export class L1ProviderWrapper {
       i++
     ) {
       if (i < transactions.length) {
-        elements.push(transactions[i])
+        // TODO: FIX
+        const tx = transactions[i]
+        elements.push(`0x01${
+          BigNumber.from(tx.transaction.timestamp).toHexString().slice(2).padStart(64, '0')
+        }${
+          BigNumber.from(tx.transaction.blockNumber).toHexString().slice(2).padStart(64, '0')
+        }${
+          tx.transaction.data.slice(2)
+        }`)
       } else {
         elements.push('0x' + '00'.repeat(32))
       }
@@ -166,12 +220,13 @@ export class L1ProviderWrapper {
 
     const tree = new MerkleTree(leaves, hash)
     const batchIndex = index - batchHeader.prevTotalElements.toNumber()
-    const treeProof = tree.getProof(leaves[index], index).map((element) => {
+    const treeProof = tree.getProof(leaves[batchIndex], batchIndex).map((element) => {
       return element.data
     })
 
     return {
-      transaction: transactions[batchIndex],
+      transaction: transactions[batchIndex].transaction,
+      transactionChainElement: transactions[batchIndex].transactionChainElement,
       transactionBatchHeader: batchHeader,
       transactionProof: {
         index: batchIndex,
@@ -198,7 +253,7 @@ export class L1ProviderWrapper {
     })
   }
 
-  private async _getTransactionBatchEvent(index: number): Promise<Event> {
+  private async _getTransactionBatchEvent(index: number): Promise<Event & { isSequencerBatch: boolean }> {
     const filter = this.OVM_CanonicalTransactionChain.filters.TransactionBatchAppended()
     const events = await this.OVM_CanonicalTransactionChain.queryFilter(filter)
 
@@ -206,7 +261,7 @@ export class L1ProviderWrapper {
       return
     }
 
-    return events.find((event) => {
+    const event = events.find((event) => {
       return (
         event.args._prevTotalElements.toNumber() <= index &&
         event.args._prevTotalElements.toNumber() +
@@ -214,5 +269,33 @@ export class L1ProviderWrapper {
           index
       )
     })
+
+    if (!event) {
+      return
+    }
+
+    const batchSubmissionFilter = this.OVM_CanonicalTransactionChain.filters.SequencerBatchAppended()
+    const batchSubmissionEvents = await this.OVM_CanonicalTransactionChain.queryFilter(batchSubmissionFilter)
+
+    if (batchSubmissionEvents.length === 0) {
+      (event as any).isSequencerBatch = false
+    } else {
+      const batchSubmissionEvent = batchSubmissionEvents.find((event) => {
+        return (
+          event.args._startingQueueIndex.toNumber() <= index &&
+          event.args._startingQueueIndex.toNumber() +
+            event.args._totalElements.toNumber() >
+            index
+        )
+      })
+
+      if (batchSubmissionEvent) {
+        (event as any).isSequencerBatch = true
+      } else {
+        (event as any).isSequencerBatch = false
+      }
+    }
+
+    return event as any
   }
 }

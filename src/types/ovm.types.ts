@@ -1,5 +1,5 @@
 import { BigNumber } from 'ethers'
-import { SecureTrie } from 'merkle-patricia-tree'
+import { BaseTrie, SecureTrie } from 'merkle-patricia-tree'
 
 export interface StateRootBatchHeader {
   batchIndex: BigNumber
@@ -52,7 +52,8 @@ export interface StateRootBatchProof {
 }
 
 export interface TransactionBatchProof {
-  transaction: string
+  transaction: SequencerTransaction
+  transactionChainElement: TransactionChainElement
   transactionBatchHeader: TransactionBatchHeader
   transactionProof: TransactionProof
 }
@@ -90,9 +91,19 @@ export interface StateDiffProof {
   ]
 }
 
+export interface SequencerTransaction {
+  blockNumber: number
+  timestamp: number
+  entrypoint: string
+  gasLimit: number
+  l1TxOrigin: string
+  l1QueueOrigin: number
+  data: string
+}
+
 export interface FraudProofData {
   proof: StateDiffProof
-  stateTrie: SecureTrie
+  stateTrie: BaseTrie
   storageTries: {
     [address: string]: SecureTrie
   }
@@ -108,4 +119,12 @@ export interface FraudProofData {
   postStateRoot: string
   postStateRootIndex: number
   postStateRootProof: StateRootBatchProof
+}
+
+export interface TransactionChainElement {
+  isSequenced: boolean
+  queueIndex?: number
+  timestamp?: number
+  blockNumber?: number
+  txData?: string
 }

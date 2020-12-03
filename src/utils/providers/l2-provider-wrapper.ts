@@ -20,6 +20,10 @@ export class L2ProviderWrapper {
     return transaction.input
   }
 
+  public async getProof(index: number, address: string, slots: string[] = []): Promise<any> {
+    return this.provider.send('eth_getProof', [address, slots, toUnpaddedHexString(index)])
+  }
+
   public async getStateDiffProof(index: number): Promise<StateDiffProof> {
     return this.provider.send('eth_getStateDiffProof', [toUnpaddedHexString(index)])
   }
