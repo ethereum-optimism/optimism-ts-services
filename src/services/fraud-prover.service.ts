@@ -254,7 +254,11 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
     }
   }
 
-  private async _findNextFraudulentTransaction(): Promise<number> {
+  /**
+   * Finds the index of the next fraudulent state root.
+   * @return Index of the next fraudulent state root, if any.
+   */
+  private async _findNextFraudulentTransaction(): Promise<number | undefined> {
     let nextStateBatchHeader = await this.state.l1Provider.getStateRootBatchHeader(
       this.state.nextUnverifiedStateRoot
     )
@@ -392,6 +396,12 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
     }
   }
 
+  /**
+   * Pulls the fraud proof contracts.
+   * @param preStateRoot Pre-state root to pull contracts for.
+   * @param transaction Transaction to pull contracts for.
+   * @return Fraud proof contracts.
+   */
   private async _getFraudProofContracts(
     preStateRoot: string,
     transaction: OvmTransaction
