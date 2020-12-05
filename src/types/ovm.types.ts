@@ -1,5 +1,5 @@
 import { BigNumber } from 'ethers'
-import { BaseTrie, SecureTrie } from 'merkle-patricia-tree'
+import { BaseTrie } from 'merkle-patricia-tree'
 
 export interface StateRootBatchHeader {
   batchIndex: BigNumber
@@ -109,7 +109,7 @@ export interface FraudProofData {
 
   stateTrie: BaseTrie
   storageTries: {
-    [address: string]: SecureTrie
+    [address: string]: BaseTrie
   }
 }
 

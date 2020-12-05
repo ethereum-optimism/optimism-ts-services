@@ -14,6 +14,7 @@ import {
   StateRootBatchProof,
   TransactionBatchProof,
   AccountStateProof,
+  StorageStateProof,
 } from '../types'
 import {
   sleep,
@@ -28,6 +29,7 @@ import {
   encodeAccountState,
   hashOvmTransaction,
   toBytes32,
+  makeTrieFromProofs,
 } from '../utils'
 
 interface FraudProverOptions {
@@ -119,9 +121,9 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
 
       try {
         this.logger.info(`Looking for mismatched state roots...`)
-        const transactionIndex = await this._findNextFraudulentTransaction()
+        const fraudulentStateRootIndex = await this._findNextFraudulentStateRoot()
 
-        if (transactionIndex === undefined) {
+        if (fraudulentStateRootIndex === undefined) {
           this.logger.info(
             `Didn't find any mismatched state roots. Trying again in ${Math.floor(
               this.options.pollingInterval / 1000
@@ -130,65 +132,50 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
           continue
         }
 
-        this.logger.info(`Pulling state batch header...`)
-        const nextStateBatchHeader = await this.state.l1Provider.getStateRootBatchHeader(
-          transactionIndex
+        this.logger.interesting(
+          `Found a mismatched state root at index: ${fraudulentStateRootIndex}`
         )
 
-        this.logger.info(`Pulling state roots for the batch...`)
-        const nextBatchStateRoots = await this.state.l1Provider.getBatchStateRoots(
-          transactionIndex
-        )
-
-        this.logger.info(`Pulling fraud proof data for tx: ${transactionIndex}`)
-
-        const proof = await this._getTxFraudProofData(transactionIndex)
+        this.logger.info(`Pulling fraud proof data...`)
+        const proof = await this._getFraudProofData(fraudulentStateRootIndex)
 
         this.logger.info(`Initializing the fraud verification process...`)
-
         await this._initializeFraudVerification(
           proof.preStateRootProof,
           proof.transactionProof
         )
 
-        this.logger.info(`Fraud verification process has been initialized.`)
-
         this.logger.info(`Loading fraud proof contracts...`)
-
         const {
           OVM_StateTransitioner,
           OVM_StateManager,
         } = await this._getFraudProofContracts(
-          nextBatchStateRoots[
-            transactionIndex - nextStateBatchHeader.prevTotalElements.toNumber()
-          ],
+          await this.state.l1Provider.getStateRoot(fraudulentStateRootIndex),
           proof.transactionProof.transaction
         )
 
-        this.logger.info(`Loaded fraud proof contracts.`)
-
+        // PRE_EXECUTION phase.
         if (
           (await OVM_StateTransitioner.phase()) ===
           StateTransitionPhase.PRE_EXECUTION
         ) {
-          this.logger.info(`Proof is currently in the PRE_EXECUTION phase.`)
+          this.logger.interesting(
+            `Fraud proof is now in the PRE_EXECUTION phase.`
+          )
 
+          this.logger.interesting(`Proving account states...`)
           await this._proveAccountStates(
             OVM_StateTransitioner,
-            OVM_StateManager,
             proof.stateDiffProof.accountStateProofs
           )
 
+          this.logger.interesting(`Proving storage slot states...`)
           await this._proveContractStorageStates(
             OVM_StateTransitioner,
-            OVM_StateManager,
             proof.stateDiffProof.accountStateProofs
           )
 
-          this.logger.interesting(
-            `Finished proving all values. Executing transaction...`
-          )
-
+          this.logger.interesting(`Executing transaction...`)
           await OVM_StateTransitioner.applyTransaction(
             proof.transactionProof.transaction,
             {
@@ -199,6 +186,7 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
           this.logger.success(`Transaction successfully executed.`)
         }
 
+        // POST_EXECUTION phase.
         if (
           (await OVM_StateTransitioner.phase()) ===
           StateTransitionPhase.POST_EXECUTION
@@ -207,6 +195,7 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
             `Fraud proof is now in the POST_EXECUTION phase.`
           )
 
+          this.logger.interesting(`Committing storage slot state updates...`)
           await this._updateContractStorageStates(
             OVM_StateTransitioner,
             OVM_StateManager,
@@ -214,6 +203,7 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
             proof.storageTries
           )
 
+          this.logger.interesting(`Committing account state updates...`)
           await this._updateAccountStates(
             OVM_StateTransitioner,
             OVM_StateManager,
@@ -221,22 +211,20 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
             proof.stateTrie
           )
 
-          this.logger.success(
-            `All updates were committed. Completing the state transition...`
-          )
-
+          this.logger.interesting(`Completing the state transition...`)
           await OVM_StateTransitioner.completeTransition()
 
           this.logger.success(`State transition completed.`)
         }
 
+        // COMPLETE phase.
         if (
           (await OVM_StateTransitioner.phase()) ===
           StateTransitionPhase.COMPLETE
         ) {
           this.logger.interesting(`Fraud proof is now in the COMPLETE phase.`)
-          this.logger.info(`Attempting to finalize the fraud proof...`)
 
+          this.logger.interesting(`Attempting to finalize the fraud proof...`)
           await this._finalizeFraudVerification(
             proof.preStateRootProof,
             proof.postStateRootProof,
@@ -244,8 +232,7 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
           )
 
           this.logger.success(`Fraud proof finalized! Congrats.`)
-
-          this.state.nextUnverifiedStateRoot = nextStateBatchHeader.prevTotalElements.toNumber()
+          this.state.nextUnverifiedStateRoot = proof.preStateRootProof.stateRootBatchHeader.prevTotalElements.toNumber()
         }
       } catch (err) {
         this.logger.error(
@@ -259,69 +246,30 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
    * Finds the index of the next fraudulent state root.
    * @return Index of the next fraudulent state root, if any.
    */
-  private async _findNextFraudulentTransaction(): Promise<number | undefined> {
-    let nextStateBatchHeader = await this.state.l1Provider.getStateRootBatchHeader(
-      this.state.nextUnverifiedStateRoot
-    )
-
-    if (nextStateBatchHeader === undefined) {
-      return
-    }
-
-    let transactionIndex: number = undefined
+  private async _findNextFraudulentStateRoot(): Promise<number | undefined> {
     while (
-      nextStateBatchHeader !== undefined &&
-      transactionIndex === undefined
+      (await this.state.l1Provider.getStateRootBatchHeader(
+        this.state.nextUnverifiedStateRoot
+      )) !== undefined
     ) {
-      const nextBatchStateRoots = await this.state.l1Provider.getBatchStateRoots(
-        this.state.nextUnverifiedStateRoot
-      )
-
-      this.logger.info(`Checking for any mismatched state roots...`)
-      for (let i = 0; i < nextBatchStateRoots.length; i++) {
-        const l1StateRoot = nextBatchStateRoots[i]
-        const l1StateRootIndex = this.state.nextUnverifiedStateRoot + i
-
-        this.logger.info(
-          `Checking state root for mismatch: ${l1StateRootIndex}`
-        )
-        const l2StateRoot = await this.state.l2Provider.getStateRoot(
-          l1StateRootIndex + this.options.l2BlockOffset
-        )
-
-        if (l1StateRoot !== l2StateRoot) {
-          transactionIndex = l1StateRootIndex
-          this.logger.interesting(
-            `Found a mismatched state root at index ${transactionIndex}!`
-          )
-          this.logger.interesting(
-            `State root published to Layer 1 was: ${l1StateRoot}`
-          )
-          this.logger.interesting(
-            `State root published to Layer 2 was: ${l2StateRoot}`
-          )
-          this.logger.interesting(`Starting the fraud proof process...`)
-          break
-        } else {
-          this.logger.info(`No state root mismatch, checking the next root.`)
-        }
-      }
-
-      if (transactionIndex === undefined) {
-        this.state.nextUnverifiedStateRoot += nextStateBatchHeader.batchSize.toNumber()
-      } else {
-        break
-      }
-
       this.logger.info(
-        `Moving on to the next batch, starting with state root index: ${this.state.nextUnverifiedStateRoot}`
+        `Checking state root for mismatch: ${this.state.nextUnverifiedStateRoot}`
       )
-      nextStateBatchHeader = await this.state.l1Provider.getStateRootBatchHeader(
+
+      const l1StateRoot = await this.state.l1Provider.getStateRoot(
         this.state.nextUnverifiedStateRoot
       )
-    }
 
-    return transactionIndex
+      const l2StateRoot = await this.state.l2Provider.getStateRoot(
+        this.state.nextUnverifiedStateRoot
+      )
+
+      if (l1StateRoot !== l2StateRoot) {
+        return this.state.nextUnverifiedStateRoot
+      } else {
+        this.state.nextUnverifiedStateRoot += 1
+      }
+    }
   }
 
   /**
@@ -329,66 +277,34 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
    * @param transactionIndex Transaction index to get proof data for.
    * @return Transaction proof data.
    */
-  private async _getTxFraudProofData(
+  private async _getFraudProofData(
     transactionIndex: number
   ): Promise<FraudProofData> {
-    const proof: StateDiffProof = await this.state.l2Provider.getStateDiffProof(
-      transactionIndex + this.options.l2BlockOffset
-    )
-
-    const senderProof = await this.state.l2Provider.getProof(
-      transactionIndex + this.options.l2BlockOffset,
-      '0xe84578fbA927D32760CB978C32bAd03069cCbDD2',
-      ['0xdeaddeaddeaddeaddeaddeaddeaddeaddeaddeaddeaddeaddeaddeaddeaddead']
-    )
-
-    proof.accountStateProofs.push(senderProof)
-
-    const gasProof = await this.state.l2Provider.getProof(
-      transactionIndex + this.options.l2BlockOffset,
-      '0x06a506a506a506a506a506a506a506a506a506a5',
-      ['0x0000000000000000000000000000000000000000000000000000000000000002']
-    )
-
-    const acc = proof.accountStateProofs.find((account) => {
-      return account.address === '0x06a506a506a506a506a506a506a506a506a506a5'
-    })
-
-    acc.storageProof = acc.storageProof.concat(gasProof.storageProof)
-
-    const entrypointProof = await this.state.l2Provider.getProof(
-      transactionIndex + this.options.l2BlockOffset,
-      '0x4200000000000000000000000000000000000005',
-      []
-    )
-
-    proof.accountStateProofs.push(entrypointProof)
-
-    const ecdsaProof = await this.state.l2Provider.getProof(
-      transactionIndex + this.options.l2BlockOffset,
-      '0x4200000000000000000000000000000000000003',
-      []
-    )
-
-    proof.accountStateProofs.push(ecdsaProof)
-
+    this.logger.info(`Getting pre-state root inclusion proof...`)
     const preStateRootProof = await this.state.l1Provider.getStateRootBatchProof(
       transactionIndex
     )
 
+    this.logger.info(`Getting post-state root inclusion proof...`)
     const postStateRootProof = await this.state.l1Provider.getStateRootBatchProof(
       transactionIndex + 1
     )
 
+    this.logger.info(`Getting transaction inclusion proof...`)
     const transactionProof = await this.state.l1Provider.getTransactionBatchProof(
       transactionIndex + 1
     )
 
-    const stateTrie = await this._makeStateTrie(proof)
-    const storageTries = await this._makeAccountTries(proof)
+    this.logger.info(`Getting state diff proof...`)
+    const stateDiffProof: StateDiffProof = await this.state.l2Provider.getStateDiffProof(
+      transactionIndex + this.options.l2BlockOffset
+    )
+
+    const stateTrie = await this._makeStateTrie(stateDiffProof)
+    const storageTries = await this._makeAccountTries(stateDiffProof)
 
     return {
-      stateDiffProof: proof,
+      stateDiffProof,
       transactionProof,
       preStateRootProof,
       postStateRootProof,
@@ -450,18 +366,11 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
    * @return View of the state trie.
    */
   private async _makeStateTrie(proof: StateDiffProof): Promise<BaseTrie> {
-    const firstRootNode = proof.accountStateProofs[0].accountProof[0]
-    const allNonRootNodes: string[] = proof.accountStateProofs.reduce(
-      (nodes, account) => {
-        return nodes.concat(account.accountProof.slice(1))
-      },
-      []
+    return makeTrieFromProofs(
+      proof.accountStateProofs.map((accountStateProof) => {
+        return accountStateProof.accountProof
+      })
     )
-    const allNodes = [firstRootNode].concat(allNonRootNodes).map((el) => {
-      return Buffer.from(el.slice(2), 'hex')
-    })
-
-    return BaseTrie.fromProof(allNodes)
   }
 
   /**
@@ -472,51 +381,16 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
   private async _makeAccountTries(
     proof: StateDiffProof
   ): Promise<{
-    [address: string]: SecureTrie
+    [address: string]: BaseTrie
   }> {
-    const witnessMap = proof.accountStateProofs.reduce(
-      (
-        map: {
-          [address: string]: Buffer[]
-        },
-        account
-      ) => {
-        const ovmContractAddress = account.address
-        if (!(ovmContractAddress in map)) {
-          if (account.storageProof.length > 0) {
-            if (account.storageProof[0].proof.length > 0) {
-              map[ovmContractAddress] = [
-                Buffer.from(account.storageProof[0].proof[0].slice(2), 'hex'),
-              ]
-            } else {
-              map[ovmContractAddress] = []
-            }
-          } else {
-            map[ovmContractAddress] = []
-          }
-        }
+    let accountTries: { [address: string]: BaseTrie } = {}
 
-        map[ovmContractAddress] = map[ovmContractAddress].concat(
-          account.storageProof.reduce((nodes, storageProof) => {
-            nodes = nodes.concat(
-              storageProof.proof.slice(1).map((el) => {
-                return Buffer.from(el.slice(2), 'hex')
-              })
-            )
-
-            return nodes
-          }, [])
-        )
-
-        return map
-      },
-      {}
-    )
-
-    const accountTries = {}
-    for (const ovmContractAddress of Object.keys(witnessMap)) {
-      const proof = witnessMap[ovmContractAddress]
-      accountTries[ovmContractAddress] = await BaseTrie.fromProof(proof)
+    for (const accountStateProof of proof.accountStateProofs) {
+      accountTries[accountStateProof.address] = await makeTrieFromProofs(
+        accountStateProof.storageProof.map((storageProof) => {
+          return storageProof.proof
+        })
+      )
     }
 
     return accountTries
@@ -569,46 +443,41 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
    */
   private async _proveAccountStates(
     OVM_StateTransitioner: Contract,
-    OVM_StateManager: Contract,
     accountStateProofs: AccountStateProof[]
   ): Promise<void> {
     for (const accountStateProof of accountStateProofs) {
       this.logger.info(
-        `Checking if we've already proven account: ${accountStateProof.address}`
-      )
-
-      const existingAccount = await OVM_StateManager.getAccount(
-        accountStateProof.address
-      )
-
-      if (existingAccount.codeHash === accountStateProof.codeHash) {
-        this.logger.info(
-          `Account has already been proven, skipping: ${accountStateProof.address}`
-        )
-        continue
-      }
-
-      this.logger.interesting(
-        `Account has not been proven. Grabbing code to deploy a copy...`
+        `Attempting to prove account state: ${accountStateProof.address}`
       )
 
       const accountCode = await this.options.l2RpcProvider.getCode(
         accountStateProof.address
       )
 
-      this.logger.info(`Deploying a copy of the code of the account...`)
+      let ethContractAddress = '0x0000c0De0000C0DE0000c0de0000C0DE0000c0De'
+      if (accountCode !== '0x') {
+        this.logger.info(`Need to deploy a copy of the account first...`)
+        ethContractAddress = await this._deployContractCode(accountCode)
+        this.logger.info(`Deployed a copy of the account, attempting proof...`)
+      }
 
-      const ethContractAddress = await this._deployContractCode(accountCode)
+      try {
+        await OVM_StateTransitioner.proveContractState(
+          accountStateProof.address,
+          ethContractAddress,
+          rlp.encode(accountStateProof.accountProof)
+        )
 
-      this.logger.info(`Attempting to prove the state of the account...`)
-
-      await OVM_StateTransitioner.proveContractState(
-        accountStateProof.address,
-        ethContractAddress,
-        rlp.encode(accountStateProof.accountProof)
-      )
-
-      this.logger.success(`Finished proving account state.`)
+        this.logger.success(`Account state proven.`)
+      } catch (err) {
+        if (err.toString().includes('Account state has already been proven')) {
+          this.logger.info(
+            `Someone else has already proven this account, skipping.`
+          )
+        } else {
+          throw err
+        }
+      }
     }
   }
 
@@ -620,41 +489,32 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
    */
   private async _proveContractStorageStates(
     OVM_StateTransitioner: Contract,
-    OVM_StateManager: Contract,
     accountStateProofs: AccountStateProof[]
   ): Promise<void> {
     for (const accountStateProof of accountStateProofs) {
       for (const slot of accountStateProof.storageProof) {
-        this.logger.info(`Trying to prove the value of slot: ${slot.key}`)
-        this.logger.info(`Value is: ${slot.value}`)
-
         this.logger.info(
-          `Checking if we've already proven the given storage slot: ${slot.key}...`
+          `Attempting to prove slot value: ${accountStateProof.address}, ${slot.key}`
         )
+        try {
+          await OVM_StateTransitioner.proveStorageSlot(
+            accountStateProof.address,
+            toBytes32(slot.key),
+            rlp.encode(slot.proof)
+          )
 
-        const existingSlotValue = await OVM_StateManager.getContractStorage(
-          accountStateProof.address,
-          slot.key
-        )
-
-        if (existingSlotValue === toBytes32(slot.value)) {
-          this.logger.info(`Slot value has already been proven, skipping.`)
-          continue
+          this.logger.success(`Slot value proven.`)
+        } catch (err) {
+          if (
+            err.toString().includes('Storage slot has already been proven.')
+          ) {
+            this.logger.info(
+              `Someone else has already proven this slot, skipping.`
+            )
+          } else {
+            throw err
+          }
         }
-
-        this.logger.info(
-          `Slot value has not been proven, attempting to prove it now...`
-        )
-
-        await OVM_StateTransitioner.proveStorageSlot(
-          accountStateProof.address,
-          toBytes32(slot.key),
-          rlp.encode(slot.proof)
-        )
-
-        this.logger.success(
-          `Proved storage slot value, moving on to the next slot.`
-        )
       }
     }
   }
@@ -672,61 +532,97 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
     accountStateProofs: AccountStateProof[],
     stateTrie: BaseTrie
   ): Promise<void> {
-    const totalUncommittedAccounts = await OVM_StateManager.getTotalUncommittedAccounts()
-    this.logger.interesting(`Total uncommitted accounts is: ${totalUncommittedAccounts}`)
-
-    for (const accountStateProof of accountStateProofs) {
-      this.logger.info(
-        `Checking if account was changed during execution: ${accountStateProof.address}`
+    while ((await OVM_StateManager.getTotalUncommittedAccounts()) > 0) {
+      const accountCommittedEvents = await OVM_StateTransitioner.queryFilter(
+        OVM_StateTransitioner.filters.AccountCommitted()
       )
 
-      if (
-        !(await OVM_StateManager.wasAccountChanged(accountStateProof.address))
-      ) {
-        this.logger.info(`Account was not changed, skipping...`)
-        continue
-      }
-
-      this.logger.info(`Pulling account state from state manager...`)
-
-      const newAccountState = await OVM_StateManager.getAccount(
-        accountStateProof.address
-      )
-
-      const stateTrieProof = await BaseTrie.createProof(
-        stateTrie,
-        fromHexString(ethers.utils.keccak256(accountStateProof.address)),
-      )
-
-      if (
-        await OVM_StateManager.wasAccountCommitted(accountStateProof.address)
-      ) {
-        this.logger.interesting(`Account was already committed, skipping...`)
-      }
-
-      this.logger.info(`Trying to commit the updated account state...`)
-      
-      await OVM_StateTransitioner.commitContractState(
-        accountStateProof.address,
-        toHexString(rlp.encode(stateTrieProof)),
-        {
-          gasLimit: this.options.deployGasLimit,
-        }
-      )
-
-      await stateTrie.put(
-        fromHexString(ethers.utils.keccak256(accountStateProof.address)),
-        encodeAccountState({
-          ...newAccountState,
-          ...{
-            nonce: newAccountState.nonce.toNumber(),
-          },
+      // Use events to figure out which accounts we've already committed.
+      const committedAccounts = accountStateProofs.filter((account) => {
+        return accountCommittedEvents.some((event) => {
+          return (
+            event.args._address.toLowerCase() === account.address.toLowerCase()
+          )
         })
+      })
+
+      // Update our trie with the values of any accounts that have already been committed. Order
+      // here doesn't matter because the trie will still end up with the same root. We can also
+      // repeatedly update a key with the same value since it won't have an impact on the trie.
+      for (const account of committedAccounts) {
+        const updatedAccountState = await OVM_StateManager.getAccount(
+          account.address
+        )
+
+        await stateTrie.put(
+          fromHexString(ethers.utils.keccak256(account.address)),
+          encodeAccountState({
+            ...updatedAccountState,
+            ...{
+              nonce: updatedAccountState.nonce.toNumber(),
+            },
+          })
+        )
+      }
+
+      // Find an uncommitted account to attempt to commit.
+      let nextUncommittedAccount: AccountStateProof
+      for (const account of accountStateProofs) {
+        if (
+          !committedAccounts.some((committedAccount) => {
+            return committedAccount.address === account.address
+          }) &&
+          (await OVM_StateManager.wasAccountChanged(account.address))
+        ) {
+          nextUncommittedAccount = account
+          break
+        }
+      }
+
+      if (nextUncommittedAccount === undefined) {
+        if ((await OVM_StateManager.getTotalUncommittedAccounts()) > 0) {
+          throw new Error(
+            `We still have accounts to commit, but we don't have any more proof data. Something went very wrong.`
+          )
+        } else {
+          return
+        }
+      }
+
+      // Generate an inclusion proof for the account, will be used to update the value on-chain.
+      const accountInclusionProof = toHexString(
+        rlp.encode(
+          await BaseTrie.createProof(
+            stateTrie,
+            fromHexString(
+              ethers.utils.keccak256(nextUncommittedAccount.address)
+            )
+          )
+        )
       )
 
-      this.logger.success(
-        `Updated account state committed, moving on to storage slots.`
+      this.logger.info(
+        `Attempting to commit account: ${nextUncommittedAccount.address}`
       )
+      try {
+        await OVM_StateTransitioner.commitContractState(
+          nextUncommittedAccount.address,
+          accountInclusionProof,
+          {
+            gasLimit: this.options.deployGasLimit,
+          }
+        )
+
+        this.logger.success(`Account committed.`)
+      } catch (err) {
+        if (err.toString().includes('invalid root hash')) {
+          this.logger.info(
+            `Could not commit account because another commitment invalidated our proof, skipping for now...`
+          )
+        } else {
+          throw err
+        }
+      }
     }
   }
 
@@ -746,69 +642,92 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
       [address: string]: BaseTrie
     }
   ) {
-    for (const accountStateProof of accountStateProofs) {
-      for (const storageProof of accountStateProof.storageProof) {
-        this.logger.info(`Checking if slot was mutated: ${accountStateProof.address}, ${storageProof.key}`)
+    while ((await OVM_StateManager.getTotalUncommittedContractStorage()) > 0) {
+      const storageCommittedEvents = await OVM_StateTransitioner.queryFilter(
+        OVM_StateTransitioner.filters.ContractStorageCommitted()
+      )
 
+      for (const accountStateProof of accountStateProofs) {
         const trie = storageTries[accountStateProof.address]
 
-        this.logger.info(`Pulling the new slot value...`)
-        const updatedSlotValue = await OVM_StateManager.getContractStorage(
-          accountStateProof.address,
-          storageProof.key
-        )
-
-        if (
-          !(await OVM_StateManager.wasContractStorageChanged(
-            accountStateProof.address,
-            storageProof.key
-          )) && !(
-            await OVM_StateManager.wasContractStorageCommitted(
-              accountStateProof.address,
-              storageProof.key
-            )
-          )
-        ) {
-          this.logger.info(`Slot was not changed, skipping...`)
-          continue
-        }
-
-        const storageTrieProof = await BaseTrie.createProof(
-          trie,
-          fromHexString(ethers.utils.keccak256(storageProof.key))
-        )
-
-        this.logger.info(`Original slot value was: ${storageProof.value}`)
-        this.logger.info(`New slot value is: ${updatedSlotValue}`)
-        this.logger.info(`Slot was mutated, checking if it was already committed...`)
-        if (
-          await OVM_StateManager.wasContractStorageCommitted(
-            accountStateProof.address,
-            storageProof.key
-          )
-        ) {
-          this.logger.interesting(
-            `Contract storage was already committed, skipping...`
-          )
-        }
-
-        this.logger.info(`New slot value not committed yet, trying to commit it...`)
-
-        await OVM_StateTransitioner.commitStorageSlot(
-          accountStateProof.address,
-          storageProof.key,
-          toHexString(rlp.encode(storageTrieProof)),
-          {
-            gasLimit: this.options.deployGasLimit,
+        const committedStorageSlots = accountStateProof.storageProof.filter(
+          (storageProof) => {
+            return storageCommittedEvents.some((event) => {
+              return (
+                event.args._address.toLowerCase() ===
+                  accountStateProof.address.toLowerCase() &&
+                event.args._key.toLowerCase() === storageProof.key.toLowerCase()
+              )
+            })
           }
         )
 
-        await trie.put(
-          fromHexString(ethers.utils.keccak256(storageProof.key)),
-          fromHexString(rlp.encode(toStrippedHexString(updatedSlotValue)))
+        for (const storageProof of committedStorageSlots) {
+          const updatedSlotValue = await OVM_StateManager.getContractStorage(
+            accountStateProof.address,
+            storageProof.key
+          )
+
+          await trie.put(
+            fromHexString(ethers.utils.keccak256(storageProof.key)),
+            fromHexString(rlp.encode(toStrippedHexString(updatedSlotValue)))
+          )
+        }
+
+        let nextUncommittedStorageProof: StorageStateProof
+        for (const storageProof of accountStateProof.storageProof) {
+          if (
+            !committedStorageSlots.some((slot) => {
+              return slot.key === storageProof.key
+            }) &&
+            (await OVM_StateManager.wasContractStorageChanged(
+              accountStateProof.address,
+              storageProof.key
+            ))
+          ) {
+            nextUncommittedStorageProof = storageProof
+            break
+          }
+        }
+
+        if (nextUncommittedStorageProof === undefined) {
+          continue
+        }
+
+        const slotInclusionProof = toHexString(
+          rlp.encode(
+            await BaseTrie.createProof(
+              trie,
+              fromHexString(
+                ethers.utils.keccak256(nextUncommittedStorageProof.key)
+              )
+            )
+          )
         )
 
-        this.logger.success(`New slot value committed successfully.`)
+        this.logger.info(
+          `Attempting to commit storage slot: ${accountStateProof.address}, ${nextUncommittedStorageProof.key}`
+        )
+        try {
+          await OVM_StateTransitioner.commitStorageSlot(
+            accountStateProof.address,
+            nextUncommittedStorageProof.key,
+            slotInclusionProof,
+            {
+              gasLimit: this.options.deployGasLimit,
+            }
+          )
+
+          this.logger.success(`Storage slot committed.`)
+        } catch (err) {
+          if (err.toString().includes('invalid root hash')) {
+            this.logger.info(
+              `Could not commit slot because another commitment invalidated our proof, skipping for now...`
+            )
+          } else {
+            throw err
+          }
+        }
       }
     }
   }

@@ -37,6 +37,19 @@ export class L1ProviderWrapper {
     }
   }
 
+  public async getStateRoot(index: number): Promise<string> {
+    const stateRootBatchHeader = await this.getStateRootBatchHeader(index)
+    if (stateRootBatchHeader === undefined) {
+      return
+    }
+
+    const batchStateRoots = await this.getBatchStateRoots(index)
+
+    return batchStateRoots[
+      index - stateRootBatchHeader.prevTotalElements.toNumber()
+    ]
+  }
+
   public async getBatchStateRoots(index: number): Promise<string[]> {
     const event = await this._getStateRootBatchEvent(index)
 
