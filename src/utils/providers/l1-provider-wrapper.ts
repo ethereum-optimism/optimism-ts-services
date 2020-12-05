@@ -177,7 +177,7 @@ export class L1ProviderWrapper {
             transaction: {
               blockNumber: context.ctxBlockNumber.toNumber(),
               timestamp: context.ctxTimestamp.toNumber(),
-              gasLimit: 12000000,
+              gasLimit: 7000000,
               entrypoint: '0x4200000000000000000000000000000000000005',
               l1TxOrigin: '0x' + '00'.repeat(20),
               l1QueueOrigin: 0,

@@ -66,11 +66,11 @@ export enum StateTransitionPhase {
 
 export interface AccountStateProof {
   address: string
-  accountProof: string[]
   balance: string
   nonce: string
   codeHash: string
   storageHash: string
+  accountProof: string[]
   storageProof: StorageStateProof[]
 }
 

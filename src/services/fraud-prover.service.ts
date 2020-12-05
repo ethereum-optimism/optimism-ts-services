@@ -24,10 +24,12 @@ import {
   L2ProviderWrapper,
   toHexString,
   fromHexString,
+  toStrippedHexString,
   encodeAccountState,
   decodeAccountState,
   hashOvmTransaction,
   updateAndProve,
+  toBytes32,
 } from '../utils'
 
 interface FraudProverOptions {
@@ -207,19 +209,18 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
             `Fraud proof is now in the POST_EXECUTION phase.`
           )
 
+          await this._updateContractStorageStates(
+            OVM_StateTransitioner,
+            OVM_StateManager,
+            proof.stateDiffProof.accountStateProofs,
+            proof.storageTries
+          )
+
           await this._updateAccountStates(
             OVM_StateTransitioner,
             OVM_StateManager,
             proof.stateDiffProof.accountStateProofs,
             proof.stateTrie
-          )
-
-          await this._updateContractStorageStates(
-            OVM_StateTransitioner,
-            OVM_StateManager,
-            proof.stateDiffProof.accountStateProofs,
-            proof.stateTrie,
-            proof.storageTries
           )
 
           this.logger.success(
@@ -245,6 +246,8 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
           )
 
           this.logger.success(`Fraud proof finalized! Congrats.`)
+
+          this.state.nextUnverifiedStateRoot = nextStateBatchHeader.prevTotalElements.toNumber()
         }
       } catch (err) {
         this.logger.error(
@@ -277,7 +280,7 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
       )
 
       this.logger.info(`Checking for any mismatched state roots...`)
-      for (let i = 0; i < nextStateBatchHeader.batchSize.toNumber(); i++) {
+      for (let i = 0; i < nextBatchStateRoots.length; i++) {
         const l1StateRoot = nextBatchStateRoots[i]
         const l1StateRootIndex = this.state.nextUnverifiedStateRoot + i
 
@@ -338,7 +341,7 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
     const senderProof = await this.state.l2Provider.getProof(
       transactionIndex + this.options.l2BlockOffset,
       '0xe84578fbA927D32760CB978C32bAd03069cCbDD2',
-      ['0x0000000000000000000000000000000000000000000000000000000000000000']
+      ['0xdeaddeaddeaddeaddeaddeaddeaddeaddeaddeaddeaddeaddeaddeaddeaddead']
     )
 
     proof.accountStateProofs.push(senderProof)
@@ -380,7 +383,7 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
     )
 
     const transactionProof = await this.state.l1Provider.getTransactionBatchProof(
-      transactionIndex
+      transactionIndex + 1
     )
 
     const stateTrie = await this._makeStateTrie(proof)
@@ -604,12 +607,6 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
       await OVM_StateTransitioner.proveContractState(
         accountStateProof.address,
         ethContractAddress,
-        {
-          nonce: accountStateProof.nonce,
-          balance: accountStateProof.balance,
-          storageRoot: accountStateProof.storageHash,
-          codeHash: accountStateProof.codeHash,
-        },
         rlp.encode(accountStateProof.accountProof)
       )
 
@@ -629,12 +626,6 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
     accountStateProofs: AccountStateProof[]
   ): Promise<void> {
     for (const accountStateProof of accountStateProofs) {
-      if (accountStateProof.storageProof.length > 0) {
-        this.logger.interesting(
-          `Moving on to prove storage slots for the account.`
-        )
-      }
-
       for (const slot of accountStateProof.storageProof) {
         this.logger.info(`Trying to prove the value of slot: ${slot.key}`)
         this.logger.info(`Value is: ${slot.value}`)
@@ -648,27 +639,24 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
           slot.key
         )
 
-        if (
-          existingSlotValue ===
-          '0x' + slot.value.slice(2).padStart(64, '0')
-        ) {
+        if (existingSlotValue === toBytes32(slot.value)) {
           this.logger.info(`Slot value has already been proven, skipping.`)
-        } else {
-          this.logger.info(
-            `Slot value has not been proven, attempting to prove it now...`
-          )
-
-          await OVM_StateTransitioner.proveStorageSlot(
-            accountStateProof.address,
-            '0x' + slot.key.slice(2).padStart(64, '0'),
-            '0x' + slot.value.slice(2).padStart(64, '0'),
-            rlp.encode(slot.proof)
-          )
-
-          this.logger.success(
-            `Proved storage slot value, moving on to the next slot.`
-          )
+          continue
         }
+
+        this.logger.info(
+          `Slot value has not been proven, attempting to prove it now...`
+        )
+
+        await OVM_StateTransitioner.proveStorageSlot(
+          accountStateProof.address,
+          toBytes32(slot.key),
+          rlp.encode(slot.proof)
+        )
+
+        this.logger.success(
+          `Proved storage slot value, moving on to the next slot.`
+        )
       }
     }
   }
@@ -686,21 +674,12 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
     accountStateProofs: AccountStateProof[],
     stateTrie: BaseTrie
   ): Promise<void> {
+    const totalUncommittedAccounts = await OVM_StateManager.getTotalUncommittedAccounts()
+    this.logger.interesting(`Total uncommitted accounts is: ${totalUncommittedAccounts}`)
+
     for (const accountStateProof of accountStateProofs) {
       this.logger.info(
-        `Account was changed during execution: ${accountStateProof.address}`
-      )
-
-      this.logger.info(`Pulling account state from state manager...`)
-
-      const newAccountState = await OVM_StateManager.getAccount(
-        accountStateProof.address
-      )
-
-      const oldAccountState = decodeAccountState(
-        await stateTrie.get(
-          fromHexString(ethers.utils.keccak256(accountStateProof.address))
-        )
+        `Checking if account was changed during execution: ${accountStateProof.address}`
       )
 
       if (
@@ -710,19 +689,22 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
         continue
       }
 
+      this.logger.info(`Pulling account state from state manager...`)
+
+      const newAccountState = await OVM_StateManager.getAccount(
+        accountStateProof.address
+      )
+
       const updateProof = await updateAndProve(
         stateTrie,
         fromHexString(ethers.utils.keccak256(accountStateProof.address)),
         encodeAccountState({
-          ...oldAccountState,
+          ...newAccountState,
           ...{
             nonce: newAccountState.nonce.toNumber(),
-            codeHash: newAccountState.codeHash,
           },
         })
       )
-
-      this.logger.info(`Trying to commit the updated account state...`)
 
       if (
         await OVM_StateManager.wasAccountCommitted(accountStateProof.address)
@@ -730,25 +712,17 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
         this.logger.interesting(`Account was already committed, skipping...`)
       }
 
-      try {
-        await OVM_StateTransitioner.commitContractState(
-          accountStateProof.address,
-          updateProof,
-          {
-            gasLimit: this.options.deployGasLimit,
-          }
-        )
-
-        this.logger.success(
-          `Updated account state committed, moving on to storage slots.`
-        )
-      } catch (err) {
-        if (!err.toString().includes('was not changed or has already')) {
-          throw err
-        } else {
-          this.logger.interesting(`Account was already committed, skipping...`)
+      this.logger.info(`Trying to commit the updated account state...`)
+      await OVM_StateTransitioner.commitContractState(
+        accountStateProof.address,
+        updateProof,
+        {
+          gasLimit: this.options.deployGasLimit,
         }
-      }
+      )
+      this.logger.success(
+        `Updated account state committed, moving on to storage slots.`
+      )
     }
   }
 
@@ -764,34 +738,31 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
     OVM_StateTransitioner: Contract,
     OVM_StateManager: Contract,
     accountStateProofs: AccountStateProof[],
-    stateTrie: BaseTrie,
     storageTries: {
       [address: string]: BaseTrie
     }
   ) {
     for (const accountStateProof of accountStateProofs) {
-      const oldAccountState = decodeAccountState(
-        await stateTrie.get(
-          fromHexString(ethers.utils.keccak256(accountStateProof.address))
-        )
-      )
-
       for (const storageProof of accountStateProof.storageProof) {
-        this.logger.info(`Slot was mutated: ${storageProof.key}`)
+        this.logger.info(`Checking if slot was mutated: ${accountStateProof.address}, ${storageProof.key}`)
 
         const trie = storageTries[accountStateProof.address]
 
         this.logger.info(`Pulling the new slot value...`)
-
         const updatedSlotValue = await OVM_StateManager.getContractStorage(
           accountStateProof.address,
           storageProof.key
         )
 
         if (
-          !OVM_StateManager.wasContractStorageChanged(
+          !(await OVM_StateManager.wasContractStorageChanged(
             accountStateProof.address,
             storageProof.key
+          )) && !(
+            await OVM_StateManager.wasContractStorageCommitted(
+              accountStateProof.address,
+              storageProof.key
+            )
           )
         ) {
           this.logger.info(`Slot was not changed, skipping...`)
@@ -801,22 +772,12 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
         const storageTrieProof = await updateAndProve(
           trie,
           fromHexString(ethers.utils.keccak256(storageProof.key)),
-          fromHexString(rlp.encode(updatedSlotValue))
+          fromHexString(rlp.encode(toStrippedHexString(updatedSlotValue)))
         )
 
-        const newAccountState = {
-          ...oldAccountState,
-          storageRoot: toHexString(trie.root),
-        }
-
-        const stateTrieProof = await updateAndProve(
-          stateTrie,
-          fromHexString(ethers.utils.keccak256(accountStateProof.address)),
-          encodeAccountState(newAccountState)
-        )
-
-        this.logger.info(`Trying to commit the new slot value...`)
-
+        this.logger.info(`Original slot value was: ${storageProof.value}`)
+        this.logger.info(`New slot value is: ${updatedSlotValue}`)
+        this.logger.info(`Slot was mutated, checking if it was already committed...`)
         if (
           await OVM_StateManager.wasContractStorageCommitted(
             accountStateProof.address,
@@ -828,29 +789,16 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
           )
         }
 
-        try {
-          await OVM_StateTransitioner.connect(
-            this.options.l1Wallet
-          ).commitStorageSlot(
-            accountStateProof.address,
-            storageProof.key,
-            stateTrieProof,
-            storageTrieProof,
-            {
-              gasLimit: this.options.deployGasLimit,
-            }
-          )
-
-          this.logger.success(`New slot value committed successfully.`)
-        } catch (err) {
-          if (!err.toString().includes('not changed or has already been')) {
-            throw err
-          } else {
-            this.logger.interesting(
-              `Contract storage was already committed, skipping...`
-            )
+        this.logger.info(`New slot value not committed yet, trying to commit it...`)
+        await OVM_StateTransitioner.commitStorageSlot(
+          accountStateProof.address,
+          storageProof.key,
+          storageTrieProof,
+          {
+            gasLimit: this.options.deployGasLimit,
           }
-        }
+        )
+        this.logger.success(`New slot value committed successfully.`)
       }
     }
   }

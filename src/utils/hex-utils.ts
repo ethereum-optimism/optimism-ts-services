@@ -34,6 +34,19 @@ export const toUintN = (num: number, n: number): string => {
   )
 }
 
+export const toBytes32 = (buf: Buffer | string | number): string => {
+  return toBytesN(buf, 32)
+}
+
+export const toBytesN = (buf: Buffer | string | number, n: number): string => {
+  return (
+    '0x' +
+    toHexString(buf)
+      .slice(2)
+      .padStart(n * 2, '0')
+  )
+}
+
 export const toUnpaddedHexString = (buf: Buffer | string | number): string => {
   const hex = '0x' + toHexString(buf).slice(2).replace(/^0+/, '')
 
@@ -41,5 +54,17 @@ export const toUnpaddedHexString = (buf: Buffer | string | number): string => {
     return '0x0'
   } else {
     return hex
+  }
+}
+
+export const toStrippedHexString = (buf: Buffer | string | number): string => {
+  const hex = toUnpaddedHexString(buf).slice(2)
+
+  if (hex === '0') {
+    return '0x'
+  } else if (hex.length % 2 === 1) {
+    return '0x' + '0' + hex
+  } else {
+    return '0x' + hex
   }
 }
