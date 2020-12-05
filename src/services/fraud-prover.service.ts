@@ -26,9 +26,7 @@ import {
   fromHexString,
   toStrippedHexString,
   encodeAccountState,
-  decodeAccountState,
   hashOvmTransaction,
-  updateAndProve,
   toBytes32,
 } from '../utils'
 
@@ -695,15 +693,9 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
         accountStateProof.address
       )
 
-      const updateProof = await updateAndProve(
+      const stateTrieProof = await BaseTrie.createProof(
         stateTrie,
         fromHexString(ethers.utils.keccak256(accountStateProof.address)),
-        encodeAccountState({
-          ...newAccountState,
-          ...{
-            nonce: newAccountState.nonce.toNumber(),
-          },
-        })
       )
 
       if (
@@ -713,13 +705,25 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
       }
 
       this.logger.info(`Trying to commit the updated account state...`)
+      
       await OVM_StateTransitioner.commitContractState(
         accountStateProof.address,
-        updateProof,
+        toHexString(rlp.encode(stateTrieProof)),
         {
           gasLimit: this.options.deployGasLimit,
         }
       )
+
+      await stateTrie.put(
+        fromHexString(ethers.utils.keccak256(accountStateProof.address)),
+        encodeAccountState({
+          ...newAccountState,
+          ...{
+            nonce: newAccountState.nonce.toNumber(),
+          },
+        })
+      )
+
       this.logger.success(
         `Updated account state committed, moving on to storage slots.`
       )
@@ -769,10 +773,9 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
           continue
         }
 
-        const storageTrieProof = await updateAndProve(
+        const storageTrieProof = await BaseTrie.createProof(
           trie,
-          fromHexString(ethers.utils.keccak256(storageProof.key)),
-          fromHexString(rlp.encode(toStrippedHexString(updatedSlotValue)))
+          fromHexString(ethers.utils.keccak256(storageProof.key))
         )
 
         this.logger.info(`Original slot value was: ${storageProof.value}`)
@@ -790,14 +793,21 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
         }
 
         this.logger.info(`New slot value not committed yet, trying to commit it...`)
+
         await OVM_StateTransitioner.commitStorageSlot(
           accountStateProof.address,
           storageProof.key,
-          storageTrieProof,
+          toHexString(rlp.encode(storageTrieProof)),
           {
             gasLimit: this.options.deployGasLimit,
           }
         )
+
+        await trie.put(
+          fromHexString(ethers.utils.keccak256(storageProof.key)),
+          fromHexString(rlp.encode(toStrippedHexString(updatedSlotValue)))
+        )
+
         this.logger.success(`New slot value committed successfully.`)
       }
     }
