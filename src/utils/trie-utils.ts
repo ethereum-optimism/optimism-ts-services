@@ -8,7 +8,6 @@ export const makeTrieFromProofs = (proofs: string[][]): Promise<BaseTrie> => {
       return proof.length === 0
     })
   ) {
-    console.log('???')
     return BaseTrie.fromProof([])
   }
 

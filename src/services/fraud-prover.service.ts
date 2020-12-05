@@ -1,7 +1,7 @@
 /* Imports: External */
 import { Contract, Signer, ethers } from 'ethers'
 import { JsonRpcProvider } from '@ethersproject/providers'
-import { SecureTrie, BaseTrie } from 'merkle-patricia-tree'
+import { BaseTrie } from 'merkle-patricia-tree'
 import * as rlp from 'rlp'
 
 /* Imports: Internal */
@@ -159,31 +159,47 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
           (await OVM_StateTransitioner.phase()) ===
           StateTransitionPhase.PRE_EXECUTION
         ) {
-          this.logger.interesting(
-            `Fraud proof is now in the PRE_EXECUTION phase.`
-          )
+          try {
+            this.logger.interesting(
+              `Fraud proof is now in the PRE_EXECUTION phase.`
+            )
 
-          this.logger.interesting(`Proving account states...`)
-          await this._proveAccountStates(
-            OVM_StateTransitioner,
-            proof.stateDiffProof.accountStateProofs
-          )
+            this.logger.interesting(`Proving account states...`)
+            await this._proveAccountStates(
+              OVM_StateTransitioner,
+              OVM_StateManager,
+              proof.stateDiffProof.accountStateProofs,
+              fraudulentStateRootIndex
+            )
 
-          this.logger.interesting(`Proving storage slot states...`)
-          await this._proveContractStorageStates(
-            OVM_StateTransitioner,
-            proof.stateDiffProof.accountStateProofs
-          )
+            this.logger.interesting(`Proving storage slot states...`)
+            await this._proveContractStorageStates(
+              OVM_StateTransitioner,
+              proof.stateDiffProof.accountStateProofs
+            )
 
-          this.logger.interesting(`Executing transaction...`)
-          await OVM_StateTransitioner.applyTransaction(
-            proof.transactionProof.transaction,
-            {
-              gasLimit: 8_000_000, // TODO
+            this.logger.interesting(`Executing transaction...`)
+            await OVM_StateTransitioner.applyTransaction(
+              proof.transactionProof.transaction,
+              {
+                gasLimit: 8_000_000, // TODO
+              }
+            )
+
+            this.logger.success(`Transaction successfully executed.`)
+          } catch (err) {
+            if (
+              err
+                .toString()
+                .includes('Function must be called during the correct phase.')
+            ) {
+              this.logger.interesting(
+                `Phase was completed by someone else, moving on.`
+              )
+            } else {
+              throw err
             }
-          )
-
-          this.logger.success(`Transaction successfully executed.`)
+          }
         }
 
         // POST_EXECUTION phase.
@@ -191,30 +207,44 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
           (await OVM_StateTransitioner.phase()) ===
           StateTransitionPhase.POST_EXECUTION
         ) {
-          this.logger.interesting(
-            `Fraud proof is now in the POST_EXECUTION phase.`
-          )
+          try {
+            this.logger.interesting(
+              `Fraud proof is now in the POST_EXECUTION phase.`
+            )
 
-          this.logger.interesting(`Committing storage slot state updates...`)
-          await this._updateContractStorageStates(
-            OVM_StateTransitioner,
-            OVM_StateManager,
-            proof.stateDiffProof.accountStateProofs,
-            proof.storageTries
-          )
+            this.logger.interesting(`Committing storage slot state updates...`)
+            await this._updateContractStorageStates(
+              OVM_StateTransitioner,
+              OVM_StateManager,
+              proof.stateDiffProof.accountStateProofs,
+              proof.storageTries
+            )
 
-          this.logger.interesting(`Committing account state updates...`)
-          await this._updateAccountStates(
-            OVM_StateTransitioner,
-            OVM_StateManager,
-            proof.stateDiffProof.accountStateProofs,
-            proof.stateTrie
-          )
+            this.logger.interesting(`Committing account state updates...`)
+            await this._updateAccountStates(
+              OVM_StateTransitioner,
+              OVM_StateManager,
+              proof.stateDiffProof.accountStateProofs,
+              proof.stateTrie
+            )
 
-          this.logger.interesting(`Completing the state transition...`)
-          await OVM_StateTransitioner.completeTransition()
+            this.logger.interesting(`Completing the state transition...`)
+            await OVM_StateTransitioner.completeTransition()
 
-          this.logger.success(`State transition completed.`)
+            this.logger.success(`State transition completed.`)
+          } catch (err) {
+            if (
+              err
+                .toString()
+                .includes('Function must be called during the correct phase.')
+            ) {
+              this.logger.interesting(
+                `Phase was completed by someone else, moving on.`
+              )
+            } else {
+              throw err
+            }
+          }
         }
 
         // COMPLETE phase.
@@ -225,15 +255,29 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
           this.logger.interesting(`Fraud proof is now in the COMPLETE phase.`)
 
           this.logger.interesting(`Attempting to finalize the fraud proof...`)
-          await this._finalizeFraudVerification(
-            proof.preStateRootProof,
-            proof.postStateRootProof,
-            proof.transactionProof.transaction
-          )
+          try {
+            await this._finalizeFraudVerification(
+              proof.preStateRootProof,
+              proof.postStateRootProof,
+              proof.transactionProof.transaction
+            )
 
-          this.logger.success(`Fraud proof finalized! Congrats.`)
-          this.state.nextUnverifiedStateRoot = proof.preStateRootProof.stateRootBatchHeader.prevTotalElements.toNumber()
+            this.logger.success(`Fraud proof finalized! Congrats.`)
+          } catch (err) {
+            if (
+              err.toString().includes('Invalid batch header.') ||
+              err.toString().includes('Index out of bounds.')
+            ) {
+              this.logger.success(
+                `Fraud proof was finalized by someone else. Congrats!`
+              )
+            } else {
+              throw err
+            }
+          }
         }
+
+        this.state.nextUnverifiedStateRoot = proof.preStateRootProof.stateRootBatchHeader.prevTotalElements.toNumber()
       } catch (err) {
         this.logger.error(
           `Caught an unhandled error, see error log below:\n\n${err}\n`
@@ -440,18 +484,28 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
    * @param OVM_StateTransitioner Ethers contract instance pointed at the state transitioner.
    * @param OVM_StateManager Ethers contract instance pointed at the state manager.
    * @param accountStateProofs All account state proofs.
+   * @param fraudulentStateRootIndex Index of the fraudulent state root.
    */
   private async _proveAccountStates(
     OVM_StateTransitioner: Contract,
-    accountStateProofs: AccountStateProof[]
+    OVM_StateManager: Contract,
+    accountStateProofs: AccountStateProof[],
+    fraudulentStateRootIndex: number
   ): Promise<void> {
     for (const accountStateProof of accountStateProofs) {
       this.logger.info(
         `Attempting to prove account state: ${accountStateProof.address}`
       )
 
+      if (await OVM_StateManager.hasAccount(accountStateProof.address)) {
+        this.logger.info(
+          `Someone else already proved this account, skipping...`
+        )
+      }
+
       const accountCode = await this.options.l2RpcProvider.getCode(
-        accountStateProof.address
+        accountStateProof.address,
+        fraudulentStateRootIndex + this.options.l2BlockOffset
       )
 
       let ethContractAddress = '0x0000c0De0000C0DE0000c0de0000C0DE0000c0De'
@@ -569,9 +623,7 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
       let nextUncommittedAccount: AccountStateProof
       for (const account of accountStateProofs) {
         if (
-          !committedAccounts.some((committedAccount) => {
-            return committedAccount.address === account.address
-          }) &&
+          !(await OVM_StateManager.wasAccountCommitted(account.address)) &&
           (await OVM_StateManager.wasAccountChanged(account.address))
         ) {
           nextUncommittedAccount = account
@@ -615,7 +667,15 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
 
         this.logger.success(`Account committed.`)
       } catch (err) {
-        if (err.toString().includes('invalid root hash')) {
+        if (
+          err.toString().includes('invalid opcode') ||
+          err.toString().includes('Invalid root hash') ||
+          err
+            .toString()
+            .includes(
+              `Account state wasn't changed or has already been committed.`
+            )
+        ) {
           this.logger.info(
             `Could not commit account because another commitment invalidated our proof, skipping for now...`
           )
@@ -648,8 +708,6 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
       )
 
       for (const accountStateProof of accountStateProofs) {
-        const trie = storageTries[accountStateProof.address]
-
         const committedStorageSlots = accountStateProof.storageProof.filter(
           (storageProof) => {
             return storageCommittedEvents.some((event) => {
@@ -668,18 +726,21 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
             storageProof.key
           )
 
-          await trie.put(
+          await storageTries[accountStateProof.address].put(
             fromHexString(ethers.utils.keccak256(storageProof.key)),
             fromHexString(rlp.encode(toStrippedHexString(updatedSlotValue)))
           )
         }
+      }
 
+      for (const accountStateProof of accountStateProofs) {
         let nextUncommittedStorageProof: StorageStateProof
         for (const storageProof of accountStateProof.storageProof) {
           if (
-            !committedStorageSlots.some((slot) => {
-              return slot.key === storageProof.key
-            }) &&
+            !(await OVM_StateManager.wasContractStorageCommitted(
+              accountStateProof.address,
+              storageProof.key
+            )) &&
             (await OVM_StateManager.wasContractStorageChanged(
               accountStateProof.address,
               storageProof.key
@@ -697,7 +758,7 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
         const slotInclusionProof = toHexString(
           rlp.encode(
             await BaseTrie.createProof(
-              trie,
+              storageTries[accountStateProof.address],
               fromHexString(
                 ethers.utils.keccak256(nextUncommittedStorageProof.key)
               )
@@ -720,7 +781,15 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
 
           this.logger.success(`Storage slot committed.`)
         } catch (err) {
-          if (err.toString().includes('invalid root hash')) {
+          if (
+            err.toString().includes('invalid opcode') ||
+            err.toString().includes('Invalid root hash') ||
+            err
+              .toString()
+              .includes(
+                `Storage slot value wasn't changed or has already been committed.`
+              )
+          ) {
             this.logger.info(
               `Could not commit slot because another commitment invalidated our proof, skipping for now...`
             )
