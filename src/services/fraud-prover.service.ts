@@ -150,7 +150,9 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
           OVM_StateTransitioner,
           OVM_StateManager,
         } = await this._getFraudProofContracts(
-          await this.state.l1Provider.getStateRoot(fraudulentStateRootIndex),
+          await this.state.l1Provider.getStateRoot(
+            fraudulentStateRootIndex - 1
+          ),
           proof.transactionProof.transaction
         )
 
@@ -326,22 +328,22 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
   ): Promise<FraudProofData> {
     this.logger.info(`Getting pre-state root inclusion proof...`)
     const preStateRootProof = await this.state.l1Provider.getStateRootBatchProof(
-      transactionIndex
+      transactionIndex - 1
     )
 
     this.logger.info(`Getting post-state root inclusion proof...`)
     const postStateRootProof = await this.state.l1Provider.getStateRootBatchProof(
-      transactionIndex + 1
+      transactionIndex
     )
 
     this.logger.info(`Getting transaction inclusion proof...`)
     const transactionProof = await this.state.l1Provider.getTransactionBatchProof(
-      transactionIndex + 1
+      transactionIndex
     )
 
     this.logger.info(`Getting state diff proof...`)
     const stateDiffProof: StateDiffProof = await this.state.l2Provider.getStateDiffProof(
-      transactionIndex + this.options.l2BlockOffset
+      transactionIndex + this.options.l2BlockOffset - 1
     )
 
     const stateTrie = await this._makeStateTrie(stateDiffProof)
