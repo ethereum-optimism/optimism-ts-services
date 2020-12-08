@@ -1,23 +1,25 @@
 import * as rlp from 'rlp'
 import { BigNumber } from 'ethers'
+import { Account, BN } from 'ethereumjs-util'
 
-import { toHexString } from './hex-utils'
+import { toHexString, fromHexString } from './hex-utils'
 
 export const encodeAccountState = (state: Partial<any>): Buffer => {
-  return rlp.encode([
-    state.nonce || 0,
-    state.balance.toNumber() || 0,
-    state.storageRoot || '0x' + '00'.repeat(32),
-    state.codeHash || '0x' + '00'.repeat(32),
-  ])
+  console.log(state.storageRoot)
+  return (new Account(
+    new BN(state.nonce),
+    new BN(state.balance.toNumber()),
+    fromHexString(state.storageRoot),
+    fromHexString(state.codeHash),
+  )).serialize()
 }
 
 export const decodeAccountState = (state: Buffer): any => {
-  const decoded = rlp.decode(state) as any
+  const account = Account.fromRlpSerializedAccount(state)
   return {
-    nonce: decoded[0].length ? parseInt(toHexString(decoded[0]), 16) : 0,
-    balance: decoded[1].length ? BigNumber.from(decoded[1]) : BigNumber.from(0),
-    storageRoot: decoded[2].length ? toHexString(decoded[2]) : null,
-    codeHash: decoded[3].length ? toHexString(decoded[3]) : null,
+    nonce: account.nonce.toNumber(),
+    balance: BigNumber.from(account.nonce.toNumber()),
+    storageRoot: toHexString(account.stateRoot),
+    codeHash: toHexString(account.codeHash),
   }
 }

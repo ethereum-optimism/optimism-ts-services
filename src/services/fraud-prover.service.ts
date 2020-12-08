@@ -249,37 +249,41 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
           }
         }
 
-        // COMPLETE phase.
-        if (
-          (await OVM_StateTransitioner.phase()) ===
-          StateTransitionPhase.COMPLETE
-        ) {
-          this.logger.interesting(`Fraud proof is now in the COMPLETE phase.`)
+        // // COMPLETE phase.
+        // if (
+        //   (await OVM_StateTransitioner.phase()) ===
+        //   StateTransitionPhase.COMPLETE
+        // ) {
+        //   this.logger.interesting(`Fraud proof is now in the COMPLETE phase.`)
 
-          this.logger.interesting(`Attempting to finalize the fraud proof...`)
-          try {
-            await this._finalizeFraudVerification(
-              proof.preStateRootProof,
-              proof.postStateRootProof,
-              proof.transactionProof.transaction
-            )
+        //   this.logger.interesting(`Attempting to finalize the fraud proof...`)
+        //   try {
+        //     await this._finalizeFraudVerification(
+        //       proof.preStateRootProof,
+        //       proof.postStateRootProof,
+        //       proof.transactionProof.transaction
+        //     )
 
-            this.logger.success(`Fraud proof finalized! Congrats.`)
-          } catch (err) {
-            if (
-              err.toString().includes('Invalid batch header.') ||
-              err.toString().includes('Index out of bounds.')
-            ) {
-              this.logger.success(
-                `Fraud proof was finalized by someone else. Congrats!`
-              )
-            } else {
-              throw err
-            }
-          }
-        }
+        //     this.logger.success(`Fraud proof finalized! Congrats.`)
+        //   } catch (err) {
+        //     if (
+        //       err.toString().includes('Invalid batch header.') ||
+        //       err.toString().includes('Index out of bounds.')
+        //     ) {
+        //       this.logger.success(
+        //         `Fraud proof was finalized by someone else. Congrats!`
+        //       )
+        //     } else {
+        //       throw err
+        //     }
+        //   }
+        // }
 
-        this.state.nextUnverifiedStateRoot = proof.preStateRootProof.stateRootBatchHeader.prevTotalElements.toNumber()
+        // this.state.nextUnverifiedStateRoot = proof.preStateRootProof.stateRootBatchHeader.prevTotalElements.toNumber()
+
+        this.logger.interesting(`Layer 2 root: ${await this.state.l2Provider.getStateRoot(fraudulentStateRootIndex + this.options.l2BlockOffset)}`)
+        this.logger.interesting(`Layer 1 root: ${await OVM_StateTransitioner.getPostStateRoot()}`)
+        this.state.nextUnverifiedStateRoot += 1
       } catch (err) {
         this.logger.error(
           `Caught an unhandled error, see error log below:\n\n${err}\n`
@@ -655,9 +659,17 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
         )
       )
 
-      this.logger.info(
-        `Attempting to commit account: ${nextUncommittedAccount.address}`
+      const updatedAccountState = await OVM_StateManager.getAccount(
+        nextUncommittedAccount.address
       )
+
+      this.logger.info(`Attempting to commit account.`)
+      this.logger.info(`Address: ${nextUncommittedAccount.address}`)
+      this.logger.info(`Balance: ${updatedAccountState.balance}`)
+      this.logger.info(`Nonce: ${updatedAccountState.nonce}`)
+      this.logger.info(`Storage Root: ${updatedAccountState.storageRoot}`)
+      this.logger.info(`Code Hash: ${updatedAccountState.codeHash}`)
+
       try {
         await OVM_StateTransitioner.commitContractState(
           nextUncommittedAccount.address,
@@ -767,10 +779,17 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
             )
           )
         )
-
-        this.logger.info(
-          `Attempting to commit storage slot: ${accountStateProof.address}, ${nextUncommittedStorageProof.key}`
+  
+        const updatedSlotValue = await OVM_StateManager.getContractStorage(
+          accountStateProof.address,
+          nextUncommittedStorageProof.key
         )
+
+        this.logger.info(`Attempting to commit storage slot.`)
+        this.logger.info(`Address: ${accountStateProof.address}`)
+        this.logger.info(`Key: ${nextUncommittedStorageProof.key}`)
+        this.logger.info(`Value: ${updatedSlotValue}`)
+
         try {
           await OVM_StateTransitioner.commitStorageSlot(
             accountStateProof.address,
