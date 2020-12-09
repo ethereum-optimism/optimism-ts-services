@@ -148,70 +148,10 @@ export class L1ProviderWrapper {
       return
     }
 
-    const transaction = await this.provider.getTransaction(
-      event.transactionHash
-    )
-
     if ((event as any).isSequencerBatch) {
-      const transactions = []
-      const txdata = fromHexString(transaction.data)
-      const shouldStartAtBatch = BigNumber.from(txdata.slice(4, 9))
-      const totalElementsToAppend = BigNumber.from(txdata.slice(9, 12))
-      const numContexts = BigNumber.from(txdata.slice(12, 15))
-
-      let nextTxPointer = 15 + 16 * numContexts.toNumber()
-      for (let i = 0; i < numContexts.toNumber(); i++) {
-        const contextPointer = 15 + 16 * i
-        const context = {
-          numSequencedTransactions: BigNumber.from(
-            txdata.slice(contextPointer, contextPointer + 3)
-          ),
-          numSubsequentQueueTransactions: BigNumber.from(
-            txdata.slice(contextPointer + 3, contextPointer + 6)
-          ),
-          ctxTimestamp: BigNumber.from(
-            txdata.slice(contextPointer + 6, contextPointer + 11)
-          ),
-          ctxBlockNumber: BigNumber.from(
-            txdata.slice(contextPointer + 11, contextPointer + 16)
-          ),
-        }
-
-        for (let j = 0; j < context.numSequencedTransactions.toNumber(); j++) {
-          const txDataLength = BigNumber.from(
-            txdata.slice(nextTxPointer, nextTxPointer + 3)
-          )
-          const txData = txdata.slice(
-            nextTxPointer + 3,
-            nextTxPointer + 3 + txDataLength.toNumber()
-          )
-
-          transactions.push({
-            transaction: {
-              blockNumber: context.ctxBlockNumber.toNumber(),
-              timestamp: context.ctxTimestamp.toNumber(),
-              gasLimit: 7000000,
-              entrypoint: '0x4200000000000000000000000000000000000005',
-              l1TxOrigin: '0x' + '00'.repeat(20),
-              l1QueueOrigin: 0,
-              data: toHexString(txData),
-            },
-            transactionChainElement: {
-              isSequenced: true,
-              queueIndex: 0,
-              timestamp: context.ctxTimestamp.toNumber(),
-              blockNumber: context.ctxBlockNumber.toNumber(),
-              txData: toHexString(txData),
-            },
-          })
-
-          nextTxPointer += 3 + txDataLength.toNumber()
-        }
-      }
-
-      return transactions
+      return this._parseSequencerBatch(event)
     } else {
-      return []
+      return this._parseQueueBatch(event)
     }
   }
 
@@ -337,5 +277,124 @@ export class L1ProviderWrapper {
     }
 
     return event as any
+  }
+
+  private async _parseSequencerBatch(event: Event): Promise<
+  Array<{
+    transaction: OvmTransaction
+    transactionChainElement: TransactionChainElement
+  }>> {
+    const transaction = await this.provider.getTransaction(
+      event.transactionHash
+    )
+
+    const transactions = []
+    const txdata = fromHexString(transaction.data)
+    const shouldStartAtBatch = BigNumber.from(txdata.slice(4, 9))
+    const totalElementsToAppend = BigNumber.from(txdata.slice(9, 12))
+    const numContexts = BigNumber.from(txdata.slice(12, 15))
+
+    let nextTxPointer = 15 + 16 * numContexts.toNumber()
+    for (let i = 0; i < numContexts.toNumber(); i++) {
+      const contextPointer = 15 + 16 * i
+      const context = {
+        numSequencedTransactions: BigNumber.from(
+          txdata.slice(contextPointer, contextPointer + 3)
+        ),
+        numSubsequentQueueTransactions: BigNumber.from(
+          txdata.slice(contextPointer + 3, contextPointer + 6)
+        ),
+        ctxTimestamp: BigNumber.from(
+          txdata.slice(contextPointer + 6, contextPointer + 11)
+        ),
+        ctxBlockNumber: BigNumber.from(
+          txdata.slice(contextPointer + 11, contextPointer + 16)
+        ),
+      }
+
+      for (let j = 0; j < context.numSequencedTransactions.toNumber(); j++) {
+        const txDataLength = BigNumber.from(
+          txdata.slice(nextTxPointer, nextTxPointer + 3)
+        )
+        const txData = txdata.slice(
+          nextTxPointer + 3,
+          nextTxPointer + 3 + txDataLength.toNumber()
+        )
+
+        transactions.push({
+          transaction: {
+            blockNumber: context.ctxBlockNumber.toNumber(),
+            timestamp: context.ctxTimestamp.toNumber(),
+            gasLimit: 7000000,
+            entrypoint: '0x4200000000000000000000000000000000000005',
+            l1TxOrigin: '0x' + '00'.repeat(20),
+            l1QueueOrigin: 0,
+            data: toHexString(txData),
+          },
+          transactionChainElement: {
+            isSequenced: true,
+            queueIndex: 0,
+            timestamp: context.ctxTimestamp.toNumber(),
+            blockNumber: context.ctxBlockNumber.toNumber(),
+            txData: toHexString(txData),
+          },
+        })
+
+        nextTxPointer += 3 + txDataLength.toNumber()
+      }
+    }
+
+    return transactions
+  }
+
+  private async _parseQueueBatch(event: Event): Promise<
+    Array<{
+      transaction: OvmTransaction
+      transactionChainElement: TransactionChainElement
+    }>
+  > {
+    const queueBatchEvents = await this.OVM_CanonicalTransactionChain.queryFilter(
+      this.OVM_CanonicalTransactionChain.filters.QueueBatchAppended(),
+      event.blockNumber,
+      event.blockNumber
+    )
+
+    const queueBatchEvent = queueBatchEvents.find((queueBatchEvent) => {
+      return queueBatchEvent.transactionHash === event.transactionHash
+    })
+
+    const transactionEnqueuedEvents = await this.OVM_CanonicalTransactionChain.queryFilter(
+      this.OVM_CanonicalTransactionChain.filters.TransactionEnqueued()
+    )
+
+    const transactions = []
+    const startingQueueIndex = queueBatchEvent.args._startingQueueIndex.toNumber()
+    const numQueueElements = queueBatchEvent.args._numQueueElements.toNumber()
+    for (let i = startingQueueIndex; i < startingQueueIndex + numQueueElements; i++) {
+      const txEnqueuedEvent = transactionEnqueuedEvents.find((txEnqueuedEvent) => {
+        return txEnqueuedEvent.args._queueIndex.toNumber() === i
+      })
+
+      transactions.push({
+        transaction: {
+          blockNumber: txEnqueuedEvent.blockNumber,
+          timestamp: txEnqueuedEvent.args._timestamp,
+          gasLimit: txEnqueuedEvent.args._gasLimit,
+          entrypoint: txEnqueuedEvent.args._entrypoint,
+          l1TxOrigin: txEnqueuedEvent.args._l1TxOrigin,
+          l1QueueOrigin: 1,
+          data: txEnqueuedEvent.args._data,
+        },
+        transactionChainElement: {
+          isSequenced: false,
+          queueIndex: txEnqueuedEvent.args._queueIndex,
+          timestamp: txEnqueuedEvent.args._timestamp,
+          blockNumber: txEnqueuedEvent.blockNumber,
+          txData: txEnqueuedEvent.args._data,
+        }
+      })
+    }
+
+    return transactions
   }
 }
