@@ -111,12 +111,6 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
       }
     }
 
-    this.state.l1Provider = new L1ProviderWrapper(
-      this.options.l1RpcProvider,
-      this.state.OVM_StateCommitmentChain,
-      this.state.OVM_CanonicalTransactionChain
-    )
-
     this.state.l2Provider = new L2ProviderWrapper(this.options.l2RpcProvider)
 
     this.logger.info(`Connecting to Lib_AddressManager...`)
@@ -161,6 +155,12 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
     )
 
     this.logger.success('Connected to all contracts.')
+
+    this.state.l1Provider = new L1ProviderWrapper(
+      this.options.l1RpcProvider,
+      this.state.OVM_StateCommitmentChain,
+      this.state.OVM_CanonicalTransactionChain
+    )
 
     this.state.nextUnverifiedStateRoot =
       this.options.fromL2TransactionIndex || 0
@@ -358,7 +358,7 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
       )
 
       const l2StateRoot = await this.state.l2Provider.getStateRoot(
-        this.state.nextUnverifiedStateRoot
+        this.state.nextUnverifiedStateRoot + this.options.l2BlockOffset
       )
 
       if (l1StateRoot !== l2StateRoot) {
