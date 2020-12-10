@@ -35,7 +35,6 @@ import {
 interface FraudProverOptions {
   l1RpcProvider: JsonRpcProvider
   l2RpcProvider: JsonRpcProvider
-  addressManagerAddress: string
   l1Wallet: Signer
   deployGasLimit: number
   runGasLimit: number
@@ -68,10 +67,67 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
     // Need to improve this, sorry.
     this.state = {} as any
 
+    this.logger.info(`Trying to connect to the L1 network...`)
+    for (let i = 0; i < 10; i++) {
+      try {
+        await this.options.l1RpcProvider.detectNetwork()
+        this.logger.info(`Successfully connected to the L1 network.`)
+        break
+      } catch (err) {
+        if (i < 9) {
+          this.logger.info(
+            `Unable to connect to L1 network, will try ${
+              10 - i
+            } more time(s)...`
+          )
+          await sleep(1000)
+        } else {
+          throw new Error(
+            `Unable to connect to the L1 network, check that your L1 endpoint is correct.`
+          )
+        }
+      }
+    }
+
+    this.logger.info(`Trying to connect to the L2 network...`)
+    for (let i = 0; i < 10; i++) {
+      try {
+        await this.options.l2RpcProvider.detectNetwork()
+        this.logger.info(`Successfully connected to the L2 network.`)
+        break
+      } catch (err) {
+        if (i < 9) {
+          this.logger.info(
+            `Unable to connect to L2 network, will try ${
+              10 - i
+            } more time(s)...`
+          )
+          await sleep(1000)
+        } else {
+          throw new Error(
+            `Unable to connect to the L2 network, check that your L2 endpoint is correct.`
+          )
+        }
+      }
+    }
+
+    this.state.l1Provider = new L1ProviderWrapper(
+      this.options.l1RpcProvider,
+      this.state.OVM_StateCommitmentChain,
+      this.state.OVM_CanonicalTransactionChain
+    )
+
+    this.state.l2Provider = new L2ProviderWrapper(this.options.l2RpcProvider)
+
+    this.logger.info(`Connecting to Lib_AddressManager...`)
+    const addressManagerAddress = await this.state.l2Provider.getAddressManagerAddress()
     this.state.Lib_AddressManager = loadContract(
       'Lib_AddressManager',
-      this.options.addressManagerAddress,
+      addressManagerAddress,
       this.options.l1RpcProvider
+    )
+    this.logger.info(
+      `Connected to Lib_AddressManager at address: ${this.state.Lib_AddressManager.address}`
     )
 
     this.logger.info('Connecting to OVM_StateCommitmentChain...')
@@ -105,13 +161,6 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
     )
 
     this.logger.success('Connected to all contracts.')
-
-    this.state.l1Provider = new L1ProviderWrapper(
-      this.options.l1RpcProvider,
-      this.state.OVM_StateCommitmentChain,
-      this.state.OVM_CanonicalTransactionChain
-    )
-    this.state.l2Provider = new L2ProviderWrapper(this.options.l2RpcProvider)
 
     this.state.nextUnverifiedStateRoot =
       this.options.fromL2TransactionIndex || 0

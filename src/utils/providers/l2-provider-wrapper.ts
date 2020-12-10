@@ -45,4 +45,13 @@ export class L2ProviderWrapper {
       accountStateProofs: proof.accounts,
     }
   }
+
+  public async getRollupInfo(): Promise<any> {
+    return this.provider.send('rollup_getInfo', [])
+  }
+
+  public async getAddressManagerAddress(): Promise<string> {
+    const rollupInfo = await this.getRollupInfo()
+    return rollupInfo.addresses.addressResolver
+  }
 }

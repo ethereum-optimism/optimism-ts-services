@@ -7,7 +7,6 @@ require('dotenv').config()
 const env = process.env
 const L2_NODE_WEB3_URL = env.L2_NODE_WEB3_URL
 const L1_NODE_WEB3_URL = env.L1_NODE_WEB3_URL
-const ADDRESS_MANAGER_ADDRESS = env.ADDRESS_MANAGER_ADDRESS
 const L1_WALLET_KEY = env.L1_WALLET_KEY
 const RELAY_GAS_LIMIT = env.RELAY_GAS_LIMIT || '4000000'
 const RUN_GAS_LIMIT = env.RUN_GAS_LIMIT || '95000000'
@@ -16,10 +15,6 @@ const L2_BLOCK_OFFSET = env.L2_BLOCK_OFFSET || '1'
 const FROM_L2_TRANSACTION_INDEX = env.FROM_L2_TRANSACTION_INDEX || '0'
 
 const main = async () => {
-  if (!ADDRESS_MANAGER_ADDRESS) {
-    throw new Error('Must pass ADDRESS_MANAGER_ADDRESS')
-  }
-
   const l2Provider = new JsonRpcProvider(L2_NODE_WEB3_URL)
   const l1Provider = new JsonRpcProvider(L1_NODE_WEB3_URL)
 
@@ -28,7 +23,6 @@ const main = async () => {
   const service = new FraudProverService({
     l1RpcProvider: l1Provider,
     l2RpcProvider: l2Provider,
-    addressManagerAddress: ADDRESS_MANAGER_ADDRESS,
     l1Wallet: wallet,
     deployGasLimit: parseInt(RELAY_GAS_LIMIT, 10),
     pollingInterval: parseInt(POLLING_INTERVAL, 10),
