@@ -6,6 +6,7 @@
   "license": "MIT",
   "scripts": {
     "start": "node ./exec/run.js",
+    "start:fraud-prover": "node ./exec/run-fraud-prover.js",
     "build": "yarn run build:typescript",
     "build:typescript": "tsc -p .",
     "lint": "yarn run lint:typescript",

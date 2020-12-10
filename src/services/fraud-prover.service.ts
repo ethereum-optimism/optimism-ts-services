@@ -38,6 +38,7 @@ interface FraudProverOptions {
   addressManagerAddress: string
   l1Wallet: Signer
   deployGasLimit: number
+  runGasLimit: number
   pollingInterval: number
   fromL2TransactionIndex: number
   l2BlockOffset: number
@@ -48,6 +49,7 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
   protected defaultOptions = {
     pollingInterval: 5000,
     deployGasLimit: 4_000_000,
+    runGasLimit: 9_500_000,
     fromL2TransactionIndex: 0,
     l2BlockOffset: 1,
   }
@@ -184,7 +186,7 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
             await OVM_StateTransitioner.applyTransaction(
               proof.transactionProof.transaction,
               {
-                gasLimit: 8_000_000, // TODO
+                gasLimit: this.options.runGasLimit,
               }
             )
 
@@ -249,41 +251,37 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
           }
         }
 
-        // // COMPLETE phase.
-        // if (
-        //   (await OVM_StateTransitioner.phase()) ===
-        //   StateTransitionPhase.COMPLETE
-        // ) {
-        //   this.logger.interesting(`Fraud proof is now in the COMPLETE phase.`)
+        // COMPLETE phase.
+        if (
+          (await OVM_StateTransitioner.phase()) ===
+          StateTransitionPhase.COMPLETE
+        ) {
+          this.logger.interesting(`Fraud proof is now in the COMPLETE phase.`)
 
-        //   this.logger.interesting(`Attempting to finalize the fraud proof...`)
-        //   try {
-        //     await this._finalizeFraudVerification(
-        //       proof.preStateRootProof,
-        //       proof.postStateRootProof,
-        //       proof.transactionProof.transaction
-        //     )
+          this.logger.interesting(`Attempting to finalize the fraud proof...`)
+          try {
+            await this._finalizeFraudVerification(
+              proof.preStateRootProof,
+              proof.postStateRootProof,
+              proof.transactionProof.transaction
+            )
 
-        //     this.logger.success(`Fraud proof finalized! Congrats.`)
-        //   } catch (err) {
-        //     if (
-        //       err.toString().includes('Invalid batch header.') ||
-        //       err.toString().includes('Index out of bounds.')
-        //     ) {
-        //       this.logger.success(
-        //         `Fraud proof was finalized by someone else. Congrats!`
-        //       )
-        //     } else {
-        //       throw err
-        //     }
-        //   }
-        // }
+            this.logger.success(`Fraud proof finalized! Congrats.`)
+          } catch (err) {
+            if (
+              err.toString().includes('Invalid batch header.') ||
+              err.toString().includes('Index out of bounds.')
+            ) {
+              this.logger.success(
+                `Fraud proof was finalized by someone else. Congrats!`
+              )
+            } else {
+              throw err
+            }
+          }
+        }
 
-        // this.state.nextUnverifiedStateRoot = proof.preStateRootProof.stateRootBatchHeader.prevTotalElements.toNumber()
-
-        this.logger.interesting(`Layer 2 root: ${await this.state.l2Provider.getStateRoot(fraudulentStateRootIndex + this.options.l2BlockOffset)}`)
-        this.logger.interesting(`Layer 1 root: ${await OVM_StateTransitioner.getPostStateRoot()}`)
-        this.state.nextUnverifiedStateRoot += 1
+        this.state.nextUnverifiedStateRoot = proof.preStateRootProof.stateRootBatchHeader.prevTotalElements.toNumber()
       } catch (err) {
         this.logger.error(
           `Caught an unhandled error, see error log below:\n\n${err}\n`
@@ -504,6 +502,14 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
       )
 
       if (await OVM_StateManager.hasAccount(accountStateProof.address)) {
+        const acc = await OVM_StateManager.getAccount(accountStateProof.address)
+        console.log({
+          balance: acc.balance.toNumber(),
+          nonce: acc.nonce.toNumber(),
+          storageRoot: acc.storageRoot,
+          codeHash: acc.codeHash,
+        })
+
         this.logger.info(
           `Someone else already proved this account, skipping...`
         )
@@ -553,9 +559,11 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
   ): Promise<void> {
     for (const accountStateProof of accountStateProofs) {
       for (const slot of accountStateProof.storageProof) {
-        this.logger.info(
-          `Attempting to prove slot value: ${accountStateProof.address}, ${slot.key}`
-        )
+        this.logger.info(`Attempting to prove slot.`)
+        this.logger.info(`Address: ${accountStateProof.address}`)
+        this.logger.info(`Key: ${slot.key}`)
+        this.logger.info(`Value: ${slot.value}`)
+
         try {
           await OVM_StateTransitioner.proveStorageSlot(
             accountStateProof.address,
@@ -779,7 +787,7 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
             )
           )
         )
-  
+
         const updatedSlotValue = await OVM_StateManager.getContractStorage(
           accountStateProof.address,
           nextUncommittedStorageProof.key

@@ -10,6 +10,7 @@ const L1_NODE_WEB3_URL = env.L1_NODE_WEB3_URL
 const ADDRESS_MANAGER_ADDRESS = env.ADDRESS_MANAGER_ADDRESS
 const L1_WALLET_KEY = env.L1_WALLET_KEY
 const RELAY_GAS_LIMIT = env.RELAY_GAS_LIMIT || '4000000'
+const RUN_GAS_LIMIT = env.RUN_GAS_LIMIT || '95000000'
 const POLLING_INTERVAL = env.POLLING_INTERVAL || '5000'
 const L2_BLOCK_OFFSET = env.L2_BLOCK_OFFSET || '1'
 const FROM_L2_TRANSACTION_INDEX = env.FROM_L2_TRANSACTION_INDEX || '0'
@@ -33,6 +34,7 @@ const main = async () => {
     pollingInterval: parseInt(POLLING_INTERVAL, 10),
     fromL2TransactionIndex: parseInt(FROM_L2_TRANSACTION_INDEX, 10),
     l2BlockOffset: parseInt(L2_BLOCK_OFFSET, 10),
+    runGasLimit: parseInt(RUN_GAS_LIMIT, 10),
   })
 
   await service.start()

@@ -6,12 +6,12 @@ import { toHexString, fromHexString } from './hex-utils'
 
 export const encodeAccountState = (state: Partial<any>): Buffer => {
   console.log(state.storageRoot)
-  return (new Account(
+  return new Account(
     new BN(state.nonce),
     new BN(state.balance.toNumber()),
     fromHexString(state.storageRoot),
-    fromHexString(state.codeHash),
-  )).serialize()
+    fromHexString(state.codeHash)
+  ).serialize()
 }
 
 export const decodeAccountState = (state: Buffer): any => {
