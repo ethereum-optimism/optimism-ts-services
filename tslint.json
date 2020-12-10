@@ -21,10 +21,10 @@
     "no-unused-expression": false,
     "object-literal-sort-keys": false,
     "ordered-imports": false,
-    "prettier": true,
     "semicolon": false,
     "variable-name": false,
-    "no-focused-test": true
+    "no-focused-test": true,
+    "prettier": [true, "./prettier-config.json"]
   },
   "linterOptions": {
     "exclude": [
