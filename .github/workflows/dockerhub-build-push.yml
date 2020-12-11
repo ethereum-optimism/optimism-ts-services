@@ -22,10 +22,13 @@ jobs:
       - name: Login to DockerHub Registry
         run: echo ${{ secrets.DOCKERHUB_ACCESS_TOKEN_SECRET }} | docker login -u ${{ secrets.DOCKERHUB_ACCESS_TOKEN_USERNAME}} --password-stdin
 
-      - name: Build and push Rollup Services image to DockerHub
+      - name: Clone the Docker repo
         run: |
           git clone https://github.com/ethereum-optimism/docker.git \
               $HOME/docker
+
+      - name: Build and push Message Relayer image to DockerHub
+        run: |
           cd $HOME/docker
           BRANCH=${GITHUB_REF##*/}
           ./build.sh -s message-relayer -b $BRANCH
@@ -33,6 +36,17 @@ jobs:
               docker push ethereumoptimism/message-relayer:latest
           elif [[ $BRANCH == 'uat' || $BRANCH == 'testnet' ]]; then
               docker push ethereumoptimism/message-relayer:$BRANCH
+          fi
+
+      - name: Build and push Fraud Prover image to DockerHub
+        run: |
+          cd $HOME/docker
+          BRANCH=${GITHUB_REF##*/}
+          ./build.sh -s fraud-prover -b $BRANCH
+          if [ $BRANCH == 'master' ]; then
+              docker push ethereumoptimism/fraud-prover:latest
+          elif [[ $BRANCH == 'uat' || $BRANCH == 'testnet' ]]; then
+              docker push ethereumoptimism/fraud-prover:$BRANCH
           fi
 
       - name: Logout of DockerHub
