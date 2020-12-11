@@ -232,12 +232,14 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
             )
 
             this.logger.interesting(`Executing transaction...`)
-            await OVM_StateTransitioner.applyTransaction(
-              proof.transactionProof.transaction,
-              {
-                gasLimit: this.options.runGasLimit,
-              }
-            )
+            await (
+              await OVM_StateTransitioner.applyTransaction(
+                proof.transactionProof.transaction,
+                {
+                  gasLimit: this.options.runGasLimit,
+                }
+              )
+            ).wait()
 
             this.logger.success(`Transaction successfully executed.`)
           } catch (err) {
@@ -282,7 +284,7 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
             )
 
             this.logger.interesting(`Completing the state transition...`)
-            await OVM_StateTransitioner.completeTransition()
+            await (await OVM_StateTransitioner.completeTransition()).wait()
 
             this.logger.success(`State transition completed.`)
           } catch (err) {
@@ -569,11 +571,13 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
       }
 
       try {
-        await OVM_StateTransitioner.proveContractState(
-          accountStateProof.address,
-          ethContractAddress,
-          rlp.encode(accountStateProof.accountProof)
-        )
+        await (
+          await OVM_StateTransitioner.proveContractState(
+            accountStateProof.address,
+            ethContractAddress,
+            rlp.encode(accountStateProof.accountProof)
+          )
+        ).wait()
 
         this.logger.success(`Account state proven.`)
       } catch (err) {
@@ -606,11 +610,13 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
         this.logger.info(`Value: ${slot.value}`)
 
         try {
-          await OVM_StateTransitioner.proveStorageSlot(
-            accountStateProof.address,
-            toBytes32(slot.key),
-            rlp.encode(slot.proof)
-          )
+          await (
+            await OVM_StateTransitioner.proveStorageSlot(
+              accountStateProof.address,
+              toBytes32(slot.key),
+              rlp.encode(slot.proof)
+            )
+          ).wait()
 
           this.logger.success(`Slot value proven.`)
         } catch (err) {
@@ -720,13 +726,15 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
       this.logger.info(`Code Hash: ${updatedAccountState.codeHash}`)
 
       try {
-        await OVM_StateTransitioner.commitContractState(
-          nextUncommittedAccount.address,
-          accountInclusionProof,
-          {
-            gasLimit: this.options.deployGasLimit,
-          }
-        )
+        await (
+          await OVM_StateTransitioner.commitContractState(
+            nextUncommittedAccount.address,
+            accountInclusionProof,
+            {
+              gasLimit: this.options.deployGasLimit,
+            }
+          )
+        ).wait()
 
         this.logger.success(`Account committed.`)
       } catch (err) {
@@ -840,14 +848,16 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
         this.logger.info(`Value: ${updatedSlotValue}`)
 
         try {
-          await OVM_StateTransitioner.commitStorageSlot(
-            accountStateProof.address,
-            nextUncommittedStorageProof.key,
-            slotInclusionProof,
-            {
-              gasLimit: this.options.deployGasLimit,
-            }
-          )
+          await (
+            await OVM_StateTransitioner.commitStorageSlot(
+              accountStateProof.address,
+              nextUncommittedStorageProof.key,
+              slotInclusionProof,
+              {
+                gasLimit: this.options.deployGasLimit,
+              }
+            )
+          ).wait()
 
           this.logger.success(`Storage slot committed.`)
         } catch (err) {
@@ -889,17 +899,19 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
       return
     }
 
-    await this.state.OVM_FraudVerifier.connect(
-      this.options.l1Wallet
-    ).initializeFraudVerification(
-      preStateRootProof.stateRoot,
-      preStateRootProof.stateRootBatchHeader,
-      preStateRootProof.stateRootProof,
-      transactionProof.transaction,
-      transactionProof.transactionChainElement,
-      transactionProof.transactionBatchHeader,
-      transactionProof.transactionProof
-    )
+    await (
+      await this.state.OVM_FraudVerifier.connect(
+        this.options.l1Wallet
+      ).initializeFraudVerification(
+        preStateRootProof.stateRoot,
+        preStateRootProof.stateRootBatchHeader,
+        preStateRootProof.stateRootProof,
+        transactionProof.transaction,
+        transactionProof.transactionChainElement,
+        transactionProof.transactionBatchHeader,
+        transactionProof.transactionProof
+      )
+    ).wait()
   }
 
   /**
@@ -913,16 +925,18 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
     postStateRootProof: StateRootBatchProof,
     transaction: OvmTransaction
   ): Promise<void> {
-    await this.state.OVM_FraudVerifier.connect(
-      this.options.l1Wallet
-    ).finalizeFraudVerification(
-      preStateRootProof.stateRoot,
-      preStateRootProof.stateRootBatchHeader,
-      preStateRootProof.stateRootProof,
-      hashOvmTransaction(transaction),
-      postStateRootProof.stateRoot,
-      postStateRootProof.stateRootBatchHeader,
-      postStateRootProof.stateRootProof
-    )
+    await (
+      await this.state.OVM_FraudVerifier.connect(
+        this.options.l1Wallet
+      ).finalizeFraudVerification(
+        preStateRootProof.stateRoot,
+        preStateRootProof.stateRootBatchHeader,
+        preStateRootProof.stateRootProof,
+        hashOvmTransaction(transaction),
+        postStateRootProof.stateRoot,
+        postStateRootProof.stateRootBatchHeader,
+        postStateRootProof.stateRootProof
+      )
+    ).wait()
   }
 }
