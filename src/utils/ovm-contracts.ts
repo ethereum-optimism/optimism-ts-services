@@ -9,7 +9,7 @@ export const loadContract = (
   address: string,
   provider: JsonRpcProvider
 ): Contract => {
-  return new Contract(address, getContractInterface(name), provider)
+  return new Contract(address, getContractInterface(name) as any, provider)
 }
 
 export const loadContractFromManager = async (

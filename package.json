@@ -6,6 +6,7 @@
   "license": "MIT",
   "scripts": {
     "start": "node ./exec/run.js",
+    "start:fraud-prover": "node ./exec/run-fraud-prover.js",
     "build": "yarn run build:typescript",
     "build:typescript": "tsc -p .",
     "lint": "yarn run lint:typescript",
@@ -21,7 +22,9 @@
     "colors": "^1.4.0",
     "debug": "^4.3.1",
     "dotenv": "^8.2.0",
+    "ethereumjs-util": "^7.0.7",
     "ethers": "^5.0.22",
+    "merkle-patricia-tree": "^4.0.0",
     "merkletreejs": "^0.2.10",
     "rlp": "^2.2.6"
   },
