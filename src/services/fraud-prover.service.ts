@@ -551,14 +551,6 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
       )
 
       if (await OVM_StateManager.hasAccount(accountStateProof.address)) {
-        const acc = await OVM_StateManager.getAccount(accountStateProof.address)
-        console.log({
-          balance: acc.balance.toNumber(),
-          nonce: acc.nonce.toNumber(),
-          storageRoot: acc.storageRoot,
-          codeHash: acc.codeHash,
-        })
-
         this.logger.info(
           `Someone else already proved this account, skipping...`
         )
