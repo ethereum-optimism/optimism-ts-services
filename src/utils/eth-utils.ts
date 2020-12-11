@@ -5,7 +5,6 @@ import { Account, BN } from 'ethereumjs-util'
 import { toHexString, fromHexString } from './hex-utils'
 
 export const encodeAccountState = (state: Partial<any>): Buffer => {
-  console.log(state.storageRoot)
   return new Account(
     new BN(state.nonce),
     new BN(state.balance.toNumber()),
