@@ -16,7 +16,8 @@ export class L1ProviderWrapper {
   constructor(
     public provider: JsonRpcProvider,
     public OVM_StateCommitmentChain: Contract,
-    public OVM_CanonicalTransactionChain: Contract
+    public OVM_CanonicalTransactionChain: Contract,
+    public l1StartOffset: number
   ) {}
 
   public async getStateRootBatchHeader(
@@ -273,7 +274,10 @@ export class L1ProviderWrapper {
 
   private async _getStateRootBatchEvent(index: number): Promise<Event> {
     const filter = this.OVM_StateCommitmentChain.filters.StateBatchAppended()
-    const events = await this.OVM_StateCommitmentChain.queryFilter(filter)
+    const events = await this.OVM_StateCommitmentChain.queryFilter(
+      filter,
+      this.l1StartOffset
+    )
 
     if (events.length === 0) {
       return
@@ -293,7 +297,10 @@ export class L1ProviderWrapper {
     index: number
   ): Promise<Event & { isSequencerBatch: boolean }> {
     const filter = this.OVM_CanonicalTransactionChain.filters.TransactionBatchAppended()
-    const events = await this.OVM_CanonicalTransactionChain.queryFilter(filter)
+    const events = await this.OVM_CanonicalTransactionChain.queryFilter(
+      filter,
+      this.l1StartOffset
+    )
 
     if (events.length === 0) {
       return
@@ -314,7 +321,8 @@ export class L1ProviderWrapper {
 
     const batchSubmissionFilter = this.OVM_CanonicalTransactionChain.filters.SequencerBatchAppended()
     const batchSubmissionEvents = await this.OVM_CanonicalTransactionChain.queryFilter(
-      batchSubmissionFilter
+      batchSubmissionFilter,
+      this.l1StartOffset
     )
 
     if (batchSubmissionEvents.length === 0) {

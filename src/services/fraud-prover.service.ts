@@ -41,6 +41,7 @@ interface FraudProverOptions {
   pollingInterval: number
   fromL2TransactionIndex: number
   l2BlockOffset: number
+  l1StartOffset: number
 }
 
 export class FraudProverService extends BaseService<FraudProverOptions> {
@@ -51,6 +52,7 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
     runGasLimit: 9_500_000,
     fromL2TransactionIndex: 0,
     l2BlockOffset: 1,
+    l1StartOffset: 0,
   }
 
   private state: {
@@ -159,7 +161,8 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
     this.state.l1Provider = new L1ProviderWrapper(
       this.options.l1RpcProvider,
       this.state.OVM_StateCommitmentChain,
-      this.state.OVM_CanonicalTransactionChain
+      this.state.OVM_CanonicalTransactionChain,
+      this.options.l1StartOffset
     )
 
     this.state.nextUnverifiedStateRoot =

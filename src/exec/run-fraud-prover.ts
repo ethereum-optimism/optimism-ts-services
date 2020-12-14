@@ -12,6 +12,7 @@ const RELAY_GAS_LIMIT = env.RELAY_GAS_LIMIT || '4000000'
 const RUN_GAS_LIMIT = env.RUN_GAS_LIMIT || '95000000'
 const POLLING_INTERVAL = env.POLLING_INTERVAL || '5000'
 const L2_BLOCK_OFFSET = env.L2_BLOCK_OFFSET || '1'
+const L1_START_OFFSET = env.L1_START_OFFSET || '0'
 const FROM_L2_TRANSACTION_INDEX = env.FROM_L2_TRANSACTION_INDEX || '0'
 
 const main = async () => {
@@ -28,6 +29,7 @@ const main = async () => {
     pollingInterval: parseInt(POLLING_INTERVAL, 10),
     fromL2TransactionIndex: parseInt(FROM_L2_TRANSACTION_INDEX, 10),
     l2BlockOffset: parseInt(L2_BLOCK_OFFSET, 10),
+    l1StartOffset: parseInt(L1_START_OFFSET, 10),
     runGasLimit: parseInt(RUN_GAS_LIMIT, 10),
   })
 
