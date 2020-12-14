@@ -651,9 +651,21 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
     stateTrie: BaseTrie
   ): Promise<void> {
     while ((await OVM_StateManager.getTotalUncommittedAccounts()) > 0) {
-      const accountCommittedEvents = await OVM_StateTransitioner.queryFilter(
-        OVM_StateTransitioner.filters.AccountCommitted()
-      )
+      let accountCommittedEvents: ethers.Event[]
+      let startingBlock = this.options.l1StartOffset
+      while (
+        startingBlock < (await this.options.l1RpcProvider.getBlockNumber())
+      ) {
+        accountCommittedEvents = accountCommittedEvents.concat(
+          await OVM_StateTransitioner.queryFilter(
+            OVM_StateTransitioner.filters.AccountCommitted(),
+            startingBlock,
+            startingBlock + 1000
+          )
+        )
+
+        startingBlock += 1000
+      }
 
       // Use events to figure out which accounts we've already committed.
       const committedAccounts = accountStateProofs.filter((account) => {
@@ -777,9 +789,19 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
     }
   ) {
     while ((await OVM_StateManager.getTotalUncommittedContractStorage()) > 0) {
-      const storageCommittedEvents = await OVM_StateTransitioner.queryFilter(
-        OVM_StateTransitioner.filters.ContractStorageCommitted()
-      )
+      let storageCommittedEvents: ethers.Event[]
+      let startingBlock = this.options.l1StartOffset
+      while (
+        startingBlock < (await this.options.l1RpcProvider.getBlockNumber())
+      ) {
+        storageCommittedEvents = storageCommittedEvents.concat(
+          await OVM_StateTransitioner.queryFilter(
+            OVM_StateTransitioner.filters.ContractStorageCommitted()
+          )
+        )
+
+        startingBlock += 1000
+      }
 
       for (const accountStateProof of accountStateProofs) {
         const committedStorageSlots = accountStateProof.storageProof.filter(

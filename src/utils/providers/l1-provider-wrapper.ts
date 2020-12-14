@@ -274,10 +274,20 @@ export class L1ProviderWrapper {
 
   private async _getStateRootBatchEvent(index: number): Promise<Event> {
     const filter = this.OVM_StateCommitmentChain.filters.StateBatchAppended()
-    const events = await this.OVM_StateCommitmentChain.queryFilter(
-      filter,
-      this.l1StartOffset
-    )
+
+    let events: ethers.Event[] = []
+    let startingBlock = this.l1StartOffset
+    while (startingBlock < (await this.provider.getBlockNumber())) {
+      events = events.concat(
+        await this.OVM_StateCommitmentChain.queryFilter(
+          filter,
+          startingBlock,
+          startingBlock + 1000
+        )
+      )
+
+      startingBlock += 1000
+    }
 
     if (events.length === 0) {
       return
@@ -297,10 +307,20 @@ export class L1ProviderWrapper {
     index: number
   ): Promise<Event & { isSequencerBatch: boolean }> {
     const filter = this.OVM_CanonicalTransactionChain.filters.TransactionBatchAppended()
-    const events = await this.OVM_CanonicalTransactionChain.queryFilter(
-      filter,
-      this.l1StartOffset
-    )
+
+    let events: ethers.Event[] = []
+    let startingBlock = this.l1StartOffset
+    while (startingBlock < (await this.provider.getBlockNumber())) {
+      events = events.concat(
+        await this.OVM_CanonicalTransactionChain.queryFilter(
+          filter,
+          startingBlock,
+          startingBlock + 1000
+        )
+      )
+
+      startingBlock += 1000
+    }
 
     if (events.length === 0) {
       return
@@ -320,10 +340,20 @@ export class L1ProviderWrapper {
     }
 
     const batchSubmissionFilter = this.OVM_CanonicalTransactionChain.filters.SequencerBatchAppended()
-    const batchSubmissionEvents = await this.OVM_CanonicalTransactionChain.queryFilter(
-      batchSubmissionFilter,
-      this.l1StartOffset
-    )
+
+    let batchSubmissionEvents: ethers.Event[]
+    startingBlock = this.l1StartOffset
+    while (startingBlock < (await this.provider.getBlockNumber())) {
+      batchSubmissionEvents = batchSubmissionEvents.concat(
+        await this.OVM_CanonicalTransactionChain.queryFilter(
+          batchSubmissionFilter,
+          startingBlock,
+          startingBlock + 1000
+        )
+      )
+
+      startingBlock += 1000
+    }
 
     if (batchSubmissionEvents.length === 0) {
       ;(event as any).isSequencerBatch = false
