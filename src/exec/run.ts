@@ -18,8 +18,8 @@ const FROM_L2_TRANSACTION_INDEX = env.FROM_L2_TRANSACTION_INDEX || '0'
 // Spreadsheet configuration
 const SPREADSHEET_MODE = env.SPREADSHEET_MODE || ''
 const SHEET_ID = env.SHEET_ID || ''
-const CLIENT_EMAIL = env.GOOGLE_SERVICE_ACCOUNT_EMAIL || ''
-const CLIENT_PRIVATE_KEY = env.GOOGLE_PRIVATE_KEY || ''
+const CLIENT_EMAIL = env.CLIENT_EMAIL || ''
+const CLIENT_PRIVATE_KEY = env.CLIENT_PRIVATE_KEY || ''
 
 const main = async () => {
   if (!ADDRESS_MANAGER_ADDRESS) {

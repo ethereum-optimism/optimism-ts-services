@@ -128,6 +128,10 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
 
     this.logger.success('Connected to all contracts.')
 
+    if (this.options.spreadsheetMode) {
+      this.logger.info('Running in spreadsheet mode')
+    }
+
     this.state.lastFinalizedTxHeight = this.options.fromL2TransactionIndex || 0
     this.state.nextUnfinalizedTxHeight =
       this.options.fromL2TransactionIndex || 0
@@ -407,9 +411,9 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
     message: SentMessage,
     proof: SentMessageProof
   ): Promise<void> {
-    if (this.spreadsheetMode) {
+    if (this.options.spreadsheetMode) {
       try {
-        const result = await this.spreadsheet.addRow({
+        const result = await this.options.spreadsheet.addRow({
           target: message.target,
           sender: message.sender,
           message: message.message,
