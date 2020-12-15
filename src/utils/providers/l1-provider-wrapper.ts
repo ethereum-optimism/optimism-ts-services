@@ -13,6 +13,13 @@ import {
 import { fromHexString, toHexString } from '../hex-utils'
 
 export class L1ProviderWrapper {
+  private eventCache: {
+    [topic: string]: {
+      startingBlockNumber: number
+      events: ethers.Event[]
+    }
+  }
+
   constructor(
     public provider: JsonRpcProvider,
     public OVM_StateCommitmentChain: Contract,
@@ -25,8 +32,13 @@ export class L1ProviderWrapper {
     contract: Contract,
     filter: ethers.EventFilter
   ): Promise<ethers.Event[]> {
+    const cache = this.eventCache[filter.topics[0] as string] || {
+      startingBlockNumber: this.l1StartOffset,
+      events: []
+    }
+
     let events: ethers.Event[] = []
-    let startingBlockNumber = this.l1StartOffset
+    let startingBlockNumber = cache.startingBlockNumber
     let latestL1BlockNumber = await this.provider.getBlockNumber()
     while (startingBlockNumber < latestL1BlockNumber) {
       events = events.concat(
@@ -40,11 +52,17 @@ export class L1ProviderWrapper {
         )
       )
 
+      if (startingBlockNumber + 1000 > latestL1BlockNumber) {
+        cache.startingBlockNumber = latestL1BlockNumber
+        cache.events = cache.events.concat(events)
+        break
+      }
+
       startingBlockNumber += 1000
       latestL1BlockNumber = await this.provider.getBlockNumber()
     }
 
-    return events
+    return cache.events
   }
 
   public async getStateRootBatchHeader(
