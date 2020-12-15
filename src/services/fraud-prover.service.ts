@@ -42,6 +42,7 @@ interface FraudProverOptions {
   fromL2TransactionIndex: number
   l2BlockOffset: number
   l1StartOffset: number
+  l1BlockFinality: number
 }
 
 export class FraudProverService extends BaseService<FraudProverOptions> {
@@ -53,6 +54,7 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
     fromL2TransactionIndex: 0,
     l2BlockOffset: 1,
     l1StartOffset: 0,
+    l1BlockFinality: 0,
   }
 
   private state: {
@@ -162,7 +164,8 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
       this.options.l1RpcProvider,
       this.state.OVM_StateCommitmentChain,
       this.state.OVM_CanonicalTransactionChain,
-      this.options.l1StartOffset
+      this.options.l1StartOffset,
+      this.options.l1BlockFinality
     )
 
     this.state.nextUnverifiedStateRoot =

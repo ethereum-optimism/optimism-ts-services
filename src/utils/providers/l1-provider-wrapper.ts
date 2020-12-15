@@ -17,7 +17,8 @@ export class L1ProviderWrapper {
     public provider: JsonRpcProvider,
     public OVM_StateCommitmentChain: Contract,
     public OVM_CanonicalTransactionChain: Contract,
-    public l1StartOffset: number
+    public l1StartOffset: number,
+    public l1BlockFinality: number
   ) {}
 
   public async findAllEvents(
@@ -25,13 +26,21 @@ export class L1ProviderWrapper {
     filter: ethers.EventFilter
   ): Promise<ethers.Event[]> {
     let events: ethers.Event[]
-    let startingBlock = this.l1StartOffset
-    while (startingBlock < (await this.provider.getBlockNumber())) {
+    let startingBlockNumber = this.l1StartOffset
+    let latestL1BlockNumber = await this.provider.getBlockNumber()
+    while (startingBlockNumber < latestL1BlockNumber) {
       events = events.concat(
-        await contract.queryFilter(filter, startingBlock, startingBlock + 1000)
+        await contract.queryFilter(
+          filter,
+          startingBlockNumber,
+          Math.min(
+            startingBlockNumber + 1000,
+            latestL1BlockNumber - this.l1BlockFinality
+          )
+        )
       )
 
-      startingBlock += 1000
+      startingBlockNumber += 1000
     }
 
     return events
