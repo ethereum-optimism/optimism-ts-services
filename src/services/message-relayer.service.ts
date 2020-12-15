@@ -7,6 +7,7 @@ import { MerkleTree } from 'merkletreejs'
 /* Imports: Internal */
 import { BaseService } from './base.service'
 import { sleep } from '../utils/common'
+import SpreadSheet from '../utils/spreadsheet'
 import {
   loadContract,
   loadContractFromManager,
@@ -44,6 +45,10 @@ interface MessageRelayerOptions {
   l2BlockOffset?: number
 
   l1StartOffset?: number
+
+  // Append txs to a spreadsheet instead of submitting transactions
+  spreadsheetMode?: boolean
+  spreadsheet?: SpreadSheet
 }
 
 export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
@@ -54,7 +59,11 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
     pollingInterval: 5000,
     l2BlockOffset: 1,
     l1StartOffset: 0,
+    spreadsheetMode: false,
   }
+
+  protected spreadsheetMode: boolean
+  protected spreadsheet: SpreadSheet
 
   private state: {
     lastFinalizedTxHeight: number
@@ -315,6 +324,7 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
         encodedMessage: message,
         encodedMessageHash: ethers.utils.keccak256(message),
         parentTransactionIndex: event.blockNumber - this.options.l2BlockOffset,
+        parentTransactionHash: event.transactionHash,
       }
     })
   }
@@ -397,12 +407,55 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
     message: SentMessage,
     proof: SentMessageProof
   ): Promise<void> {
-    try {
-      this.logger.info('Dry-run, checking to make sure proof would succeed...')
+    if (this.spreadsheetMode) {
+      try {
+        const result = await this.spreadsheet.addRow({
+          target: message.target,
+          sender: message.sender,
+          message: message.message,
+          messageNonce: message.messageNonce,
+          encodedMessage: message.encodedMessage,
+          encodedMessageHash: message.encodedMessageHash,
+          parentTransactionIndex: message.parentTransactionIndex,
+          parentTransactionHash: message.parentTransactionIndex,
+          stateRoot: proof.stateRoot,
+          stateRootBatchHeader: proof.stateRootBatchHeader,
+          stateRootProof: proof.stateRootProof,
+          stateTrieWitness: proof.stateTrieWitness.toString('hex'),
+          storageTrieWitness: proof.storageTrieWitness.toString('hex')
+        })
+        this.logger.info('')
+      } catch (e) {
+        this.logger.error('')
+      }
+    } else {
+      try {
+        this.logger.info('Dry-run, checking to make sure proof would succeed...')
 
-      await this.state.OVM_L1CrossDomainMessenger.connect(
+        await this.state.OVM_L1CrossDomainMessenger.connect(
+          this.options.l1Wallet
+        ).callStatic.relayMessage(
+          message.target,
+          message.sender,
+          message.message,
+          message.messageNonce,
+          proof,
+          {
+            gasLimit: this.options.relayGasLimit,
+          }
+        )
+
+        this.logger.info('Proof should succeed. Submitting for real this time...')
+      } catch (err) {
+        this.logger.error(
+          `Proof would fail, skipping. See error message below:\n\n${err.message}\n`
+        )
+        return
+      }
+
+      const result = await this.state.OVM_L1CrossDomainMessenger.connect(
         this.options.l1Wallet
-      ).callStatic.relayMessage(
+      ).relayMessage(
         message.target,
         message.sender,
         message.message,
@@ -413,40 +466,19 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
         }
       )
 
-      this.logger.info('Proof should succeed. Submitting for real this time...')
-    } catch (err) {
-      this.logger.error(
-        `Proof would fail, skipping. See error message below:\n\n${err.message}\n`
-      )
-      return
-    }
+      try {
+        const receipt = await result.wait()
 
-    const result = await this.state.OVM_L1CrossDomainMessenger.connect(
-      this.options.l1Wallet
-    ).relayMessage(
-      message.target,
-      message.sender,
-      message.message,
-      message.messageNonce,
-      proof,
-      {
-        gasLimit: this.options.relayGasLimit,
+        this.logger.interesting(
+          `Relay message transaction sent, hash is: ${receipt.transactionHash}`
+        )
+      } catch (err) {
+        this.logger.error(
+          `Real relay attempt failed, skipping. See error message below:\n\n${err.message}\n`
+        )
+        return
       }
-    )
-
-    try {
-      const receipt = await result.wait()
-
-      this.logger.interesting(
-        `Relay message transaction sent, hash is: ${receipt.transactionHash}`
-      )
-    } catch (err) {
-      this.logger.error(
-        `Real relay attempt failed, skipping. See error message below:\n\n${err.message}\n`
-      )
-      return
+      this.logger.success(`Message successfully relayed to Layer 1!`)
     }
-
-    this.logger.success(`Message successfully relayed to Layer 1!`)
   }
 }

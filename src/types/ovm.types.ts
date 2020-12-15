@@ -25,6 +25,7 @@ export interface SentMessage {
   encodedMessage: string
   encodedMessageHash: string
   parentTransactionIndex: number
+  parentTransactionHash: string
 }
 
 export interface StateRootProof {

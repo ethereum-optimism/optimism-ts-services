@@ -1,6 +1,7 @@
 import { Wallet } from 'ethers'
 import { JsonRpcProvider } from '@ethersproject/providers'
 import { MessageRelayerService } from '../services/message-relayer.service'
+import SpreadSheet from '../utils/spreadsheet'
 import { config } from 'dotenv'
 config()
 
@@ -13,6 +14,12 @@ const RELAY_GAS_LIMIT = env.RELAY_GAS_LIMIT || '4000000'
 const POLLING_INTERVAL = env.POLLING_INTERVAL || '5000'
 const L2_BLOCK_OFFSET = env.L2_BLOCK_OFFSET || '1'
 const FROM_L2_TRANSACTION_INDEX = env.FROM_L2_TRANSACTION_INDEX || '0'
+
+// Spreadsheet configuration
+const SPREADSHEET_MODE = env.SPREADSHEET_MODE || ''
+const SHEET_ID = env.SHEET_ID || ''
+const CLIENT_EMAIL = env.GOOGLE_SERVICE_ACCOUNT_EMAIL || ''
+const CLIENT_PRIVATE_KEY = env.GOOGLE_PRIVATE_KEY || ''
 
 const main = async () => {
   if (!ADDRESS_MANAGER_ADDRESS) {
@@ -33,6 +40,21 @@ const main = async () => {
 
   const wallet = new Wallet(L1_WALLET_KEY, l1Provider)
 
+  let spreadsheet = null
+  if (SPREADSHEET_MODE) {
+    if (!SHEET_ID) {
+      throw new Error('Must pass SHEET_ID')
+    }
+    if (!CLIENT_EMAIL) {
+      throw new Error('Must pass CLIENT_EMAIL')
+    }
+    if (!CLIENT_PRIVATE_KEY) {
+      throw new Error('Must pass CLIENT_PRIVATE_KEY')
+    }
+    spreadsheet = new SpreadSheet(SHEET_ID)
+    await spreadsheet.init(CLIENT_EMAIL, CLIENT_PRIVATE_KEY)
+  }
+
   const service = new MessageRelayerService({
     l1RpcProvider: l1Provider,
     l2RpcProvider: l2Provider,
@@ -42,9 +64,11 @@ const main = async () => {
     fromL2TransactionIndex: parseInt(FROM_L2_TRANSACTION_INDEX, 10),
     pollingInterval: parseInt(POLLING_INTERVAL, 10),
     l2BlockOffset: parseInt(L2_BLOCK_OFFSET, 10),
+    spreadsheetMode: !!SPREADSHEET_MODE,
+    spreadsheet,
   })
 
   await service.start()
 }
-
 export default main
+
