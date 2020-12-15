@@ -424,9 +424,10 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
           stateTrieWitness: proof.stateTrieWitness.toString('hex'),
           storageTrieWitness: proof.storageTrieWitness.toString('hex')
         })
-        this.logger.info('')
+        this.logger.info('Submitted relay message to spreadsheet')
       } catch (e) {
-        this.logger.error('')
+        this.logger.error('Cannot submit message to spreadsheet')
+        this.logger.error(e.message)
       }
     } else {
       try {
