@@ -25,7 +25,7 @@ export class L1ProviderWrapper {
     contract: Contract,
     filter: ethers.EventFilter
   ): Promise<ethers.Event[]> {
-    let events: ethers.Event[]
+    let events: ethers.Event[] = []
     let startingBlockNumber = this.l1StartOffset
     let latestL1BlockNumber = await this.provider.getBlockNumber()
     while (startingBlockNumber < latestL1BlockNumber) {
