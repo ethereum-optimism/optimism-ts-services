@@ -62,6 +62,8 @@ export class L1ProviderWrapper {
       latestL1BlockNumber = await this.provider.getBlockNumber()
     }
 
+    this.eventCache[filter.topics[0] as string] = cache
+
     return cache.events
   }
 
