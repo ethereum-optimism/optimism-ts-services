@@ -41,6 +41,7 @@ export class L1ProviderWrapper {
       )
 
       startingBlockNumber += 1000
+      latestL1BlockNumber = await this.provider.getBlockNumber()
     }
 
     return events
