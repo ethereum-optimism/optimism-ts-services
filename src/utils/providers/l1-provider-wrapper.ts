@@ -16,8 +16,36 @@ export class L1ProviderWrapper {
   constructor(
     public provider: JsonRpcProvider,
     public OVM_StateCommitmentChain: Contract,
-    public OVM_CanonicalTransactionChain: Contract
+    public OVM_CanonicalTransactionChain: Contract,
+    public l1StartOffset: number,
+    public l1BlockFinality: number
   ) {}
+
+  public async findAllEvents(
+    contract: Contract,
+    filter: ethers.EventFilter
+  ): Promise<ethers.Event[]> {
+    let events: ethers.Event[] = []
+    let startingBlockNumber = this.l1StartOffset
+    let latestL1BlockNumber = await this.provider.getBlockNumber()
+    while (startingBlockNumber < latestL1BlockNumber) {
+      events = events.concat(
+        await contract.queryFilter(
+          filter,
+          startingBlockNumber,
+          Math.min(
+            startingBlockNumber + 1000,
+            latestL1BlockNumber - this.l1BlockFinality
+          )
+        )
+      )
+
+      startingBlockNumber += 1000
+      latestL1BlockNumber = await this.provider.getBlockNumber()
+    }
+
+    return events
+  }
 
   public async getStateRootBatchHeader(
     index: number
@@ -272,8 +300,10 @@ export class L1ProviderWrapper {
   }
 
   private async _getStateRootBatchEvent(index: number): Promise<Event> {
-    const filter = this.OVM_StateCommitmentChain.filters.StateBatchAppended()
-    const events = await this.OVM_StateCommitmentChain.queryFilter(filter)
+    const events = await this.findAllEvents(
+      this.OVM_StateCommitmentChain,
+      this.OVM_StateCommitmentChain.filters.StateBatchAppended()
+    )
 
     if (events.length === 0) {
       return
@@ -292,8 +322,10 @@ export class L1ProviderWrapper {
   private async _getTransactionBatchEvent(
     index: number
   ): Promise<Event & { isSequencerBatch: boolean }> {
-    const filter = this.OVM_CanonicalTransactionChain.filters.TransactionBatchAppended()
-    const events = await this.OVM_CanonicalTransactionChain.queryFilter(filter)
+    const events = await this.findAllEvents(
+      this.OVM_CanonicalTransactionChain,
+      this.OVM_CanonicalTransactionChain.filters.TransactionBatchAppended()
+    )
 
     if (events.length === 0) {
       return
@@ -312,9 +344,9 @@ export class L1ProviderWrapper {
       return
     }
 
-    const batchSubmissionFilter = this.OVM_CanonicalTransactionChain.filters.SequencerBatchAppended()
-    const batchSubmissionEvents = await this.OVM_CanonicalTransactionChain.queryFilter(
-      batchSubmissionFilter
+    const batchSubmissionEvents = await this.findAllEvents(
+      this.OVM_CanonicalTransactionChain,
+      this.OVM_CanonicalTransactionChain.filters.SequencerBatchAppended()
     )
 
     if (batchSubmissionEvents.length === 0) {

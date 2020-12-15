@@ -42,6 +42,8 @@ interface MessageRelayerOptions {
   // Number of blocks that L2 is "ahead" of transaction indices. Can happen if blocks are created
   // on L2 after the genesis but before the first state commitment is published.
   l2BlockOffset?: number
+
+  l1StartOffset?: number
 }
 
 export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
@@ -51,6 +53,7 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
     fromL2TransactionIndex: 0,
     pollingInterval: 5000,
     l2BlockOffset: 1,
+    l1StartOffset: 0,
   }
 
   private state: {
@@ -218,7 +221,22 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
     | undefined
   > {
     const filter = this.state.OVM_StateCommitmentChain.filters.StateBatchAppended()
-    const events = await this.state.OVM_StateCommitmentChain.queryFilter(filter)
+
+    let events: ethers.Event[] = []
+    let startingBlock = this.options.l1StartOffset
+    while (
+      startingBlock < (await this.options.l1RpcProvider.getBlockNumber())
+    ) {
+      events = events.concat(
+        await this.state.OVM_StateCommitmentChain.queryFilter(
+          filter,
+          startingBlock,
+          startingBlock + 1000
+        )
+      )
+
+      startingBlock += 1000
+    }
 
     if (events.length === 0) {
       return
