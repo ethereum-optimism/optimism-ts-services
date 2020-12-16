@@ -458,7 +458,7 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
         if (l1StateRoot !== l2StateRoot) {
           this.logger.interesting(`L1 State Root: ${l1StateRoot}`)
           this.logger.interesting(`L2 State Root: ${l2StateRoot}`)
-          return this.state.nextUnverifiedStateRoot
+          return index
         }
       }
 
