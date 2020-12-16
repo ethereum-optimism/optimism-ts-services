@@ -1,5 +1,5 @@
 import * as rlp from 'rlp'
-import { BigNumber } from 'ethers'
+import { BigNumber, Contract } from 'ethers'
 import { Account, BN } from 'ethereumjs-util'
 
 import { toHexString, fromHexString } from './hex-utils'
@@ -20,5 +20,28 @@ export const decodeAccountState = (state: Buffer): any => {
     balance: BigNumber.from(account.nonce.toNumber()),
     storageRoot: toHexString(account.stateRoot),
     codeHash: toHexString(account.codeHash),
+  }
+}
+
+export const smartSendTransaction = async (options: {
+  contract: Contract,
+  functionName: string,
+  args?: any[],
+  acceptableErrors?: string[]
+}): Promise<void> => {
+  try {
+    await (
+      await options.contract[options.functionName](...(options.args || []))
+    ).wait()
+  } catch (err) {
+    try {
+      await options.contract.callStatic[options.functionName](...(options.args || []))
+    } catch (err) {
+      if (!(options.acceptableErrors && options.acceptableErrors.some((acceptableError) => {
+        return err.toString().includes(acceptableError)
+      }))) {
+        throw err
+      }
+    }
   }
 }
