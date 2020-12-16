@@ -30,6 +30,7 @@ import {
   hashOvmTransaction,
   toBytes32,
   makeTrieFromProofs,
+  shuffle,
 } from '../utils'
 
 interface FraudProverOptions {
@@ -272,14 +273,23 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
             )
 
             this.logger.interesting(`Executing transaction...`)
-            await (
-              await OVM_StateTransitioner.applyTransaction(
+            try {
+              await (
+                await OVM_StateTransitioner.applyTransaction(
+                  proof.transactionProof.transaction,
+                  {
+                    gasLimit: this.options.runGasLimit,
+                  }
+                )
+              ).wait()
+            } catch (err) {
+              await OVM_StateTransitioner.callStatic.applyTransaction(
                 proof.transactionProof.transaction,
                 {
                   gasLimit: this.options.runGasLimit,
                 }
               )
-            ).wait()
+            }
 
             this.logger.success(`Transaction successfully executed.`)
           } catch (err) {
@@ -324,7 +334,11 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
             )
 
             this.logger.interesting(`Completing the state transition...`)
-            await (await OVM_StateTransitioner.completeTransition()).wait()
+            try {
+              await (await OVM_StateTransitioner.completeTransition()).wait()
+            } catch (err) {
+              await OVM_StateTransitioner.callStatic.completeTransition()
+            }
 
             this.logger.success(`State transition completed.`)
           } catch (err) {
@@ -406,6 +420,8 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
       )
 
       if (l1StateRoot !== l2StateRoot) {
+        this.logger.interesting(`L1 State Root: ${l1StateRoot}`)
+        this.logger.interesting(`L2 State Root: ${l2StateRoot}`)
         return this.state.nextUnverifiedStateRoot
       } else {
         this.state.nextUnverifiedStateRoot += 1
@@ -589,7 +605,7 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
     accountStateProofs: AccountStateProof[],
     fraudulentStateRootIndex: number
   ): Promise<void> {
-    for (const accountStateProof of accountStateProofs) {
+    for (const accountStateProof of shuffle(accountStateProofs)) {
       this.logger.info(
         `Attempting to prove account state: ${accountStateProof.address}`
       )
@@ -624,12 +640,22 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
 
         this.logger.success(`Account state proven.`)
       } catch (err) {
-        if (err.toString().includes('Account state has already been proven')) {
-          this.logger.info(
-            `Someone else has already proven this account, skipping.`
+        try {
+          await OVM_StateTransitioner.callStatic.proveContractState(
+            accountStateProof.address,
+            ethContractAddress,
+            rlp.encode(accountStateProof.accountProof)
           )
-        } else {
-          throw err
+        } catch (err) {
+          if (
+            err.toString().includes('Account state has already been proven')
+          ) {
+            this.logger.info(
+              `Someone else has already proven this account, skipping.`
+            )
+          } else {
+            throw err
+          }
         }
       }
     }
@@ -646,8 +672,8 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
     OVM_StateManager: Contract,
     accountStateProofs: AccountStateProof[]
   ): Promise<void> {
-    for (const accountStateProof of accountStateProofs) {
-      for (const slot of accountStateProof.storageProof) {
+    for (const accountStateProof of shuffle(accountStateProofs)) {
+      for (const slot of shuffle(accountStateProof.storageProof)) {
         this.logger.info(`Attempting to prove slot.`)
         this.logger.info(`Address: ${accountStateProof.address}`)
         this.logger.info(`Key: ${slot.key}`)
@@ -676,14 +702,22 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
 
           this.logger.success(`Slot value proven.`)
         } catch (err) {
-          if (
-            err.toString().includes('Storage slot has already been proven.')
-          ) {
-            this.logger.info(
-              `Someone else has already proven this slot, skipping.`
+          try {
+            await OVM_StateTransitioner.callStatic.proveStorageSlot(
+              accountStateProof.address,
+              toBytes32(slot.key),
+              rlp.encode(slot.proof)
             )
-          } else {
-            throw err
+          } catch (err) {
+            if (
+              err.toString().includes('Storage slot has already been proven.')
+            ) {
+              this.logger.info(
+                `Someone else has already proven this slot, skipping.`
+              )
+            } else {
+              throw err
+            }
           }
         }
       }
@@ -739,7 +773,7 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
 
       // Find an uncommitted account to attempt to commit.
       let nextUncommittedAccount: AccountStateProof
-      for (const account of accountStateProofs) {
+      for (const account of shuffle(accountStateProofs)) {
         if (
           !(await OVM_StateManager.wasAccountCommitted(account.address)) &&
           (await OVM_StateManager.wasAccountChanged(account.address))
@@ -795,20 +829,30 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
 
         this.logger.success(`Account committed.`)
       } catch (err) {
-        if (
-          err.toString().includes('invalid opcode') ||
-          err.toString().includes('Invalid root hash') ||
-          err
-            .toString()
-            .includes(
-              `Account state wasn't changed or has already been committed.`
-            )
-        ) {
-          this.logger.info(
-            `Could not commit account because another commitment invalidated our proof, skipping for now...`
+        try {
+          await OVM_StateTransitioner.callStatic.commitContractState(
+            nextUncommittedAccount.address,
+            accountInclusionProof,
+            {
+              gasLimit: this.options.deployGasLimit,
+            }
           )
-        } else {
-          throw err
+        } catch (err) {
+          if (
+            err.toString().includes('invalid opcode') ||
+            err.toString().includes('Invalid root hash') ||
+            err
+              .toString()
+              .includes(
+                `Account state wasn't changed or has already been committed.`
+              )
+          ) {
+            this.logger.info(
+              `Could not commit account because another commitment invalidated our proof, skipping for now...`
+            )
+          } else {
+            throw err
+          }
         }
       }
     }
@@ -919,20 +963,31 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
 
           this.logger.success(`Storage slot committed.`)
         } catch (err) {
-          if (
-            err.toString().includes('invalid opcode') ||
-            err.toString().includes('Invalid root hash') ||
-            err
-              .toString()
-              .includes(
-                `Storage slot value wasn't changed or has already been committed.`
-              )
-          ) {
-            this.logger.info(
-              `Could not commit slot because another commitment invalidated our proof, skipping for now...`
+          try {
+            await OVM_StateTransitioner.callStatic.commitStorageSlot(
+              accountStateProof.address,
+              nextUncommittedStorageProof.key,
+              slotInclusionProof,
+              {
+                gasLimit: this.options.deployGasLimit,
+              }
             )
-          } else {
-            throw err
+          } catch (err) {
+            if (
+              err.toString().includes('invalid opcode') ||
+              err.toString().includes('Invalid root hash') ||
+              err
+                .toString()
+                .includes(
+                  `Storage slot value wasn't changed or has already been committed.`
+                )
+            ) {
+              this.logger.info(
+                `Could not commit slot because another commitment invalidated our proof, skipping for now...`
+              )
+            } else {
+              throw err
+            }
           }
         }
       }
@@ -957,22 +1012,33 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
       return
     }
 
-    await (
+    try {
+      await (
+        await this.state.OVM_FraudVerifier.connect(
+          this.options.l1Wallet
+        ).initializeFraudVerification(
+          preStateRootProof.stateRoot,
+          preStateRootProof.stateRootBatchHeader,
+          preStateRootProof.stateRootProof,
+          transactionProof.transaction,
+          transactionProof.transactionChainElement,
+          transactionProof.transactionBatchHeader,
+          transactionProof.transactionProof
+        )
+      ).wait()
+    } catch (err) {
       await this.state.OVM_FraudVerifier.connect(
         this.options.l1Wallet
-      ).initializeFraudVerification(
+      ).callStatic.initializeFraudVerification(
         preStateRootProof.stateRoot,
         preStateRootProof.stateRootBatchHeader,
         preStateRootProof.stateRootProof,
         transactionProof.transaction,
         transactionProof.transactionChainElement,
         transactionProof.transactionBatchHeader,
-        transactionProof.transactionProof,
-        {
-          gasLimit: this.options.deployGasLimit,
-        }
+        transactionProof.transactionProof
       )
-    ).wait()
+    }
   }
 
   /**
@@ -986,10 +1052,24 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
     postStateRootProof: StateRootBatchProof,
     transaction: OvmTransaction
   ): Promise<void> {
-    await (
+    try {
+      await (
+        await this.state.OVM_FraudVerifier.connect(
+          this.options.l1Wallet
+        ).finalizeFraudVerification(
+          preStateRootProof.stateRoot,
+          preStateRootProof.stateRootBatchHeader,
+          preStateRootProof.stateRootProof,
+          hashOvmTransaction(transaction),
+          postStateRootProof.stateRoot,
+          postStateRootProof.stateRootBatchHeader,
+          postStateRootProof.stateRootProof
+        )
+      ).wait()
+    } catch (err) {
       await this.state.OVM_FraudVerifier.connect(
         this.options.l1Wallet
-      ).finalizeFraudVerification(
+      ).callStatic.finalizeFraudVerification(
         preStateRootProof.stateRoot,
         preStateRootProof.stateRootBatchHeader,
         preStateRootProof.stateRootProof,
@@ -998,6 +1078,6 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
         postStateRootProof.stateRootBatchHeader,
         postStateRootProof.stateRootProof
       )
-    ).wait()
+    }
   }
 }

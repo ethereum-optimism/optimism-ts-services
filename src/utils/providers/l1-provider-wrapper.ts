@@ -333,7 +333,7 @@ export class L1ProviderWrapper {
       return
     }
 
-    return events.find((event) => {
+    const matching = events.filter((event) => {
       return (
         event.args._prevTotalElements.toNumber() <= index &&
         event.args._prevTotalElements.toNumber() +
@@ -341,6 +341,36 @@ export class L1ProviderWrapper {
           index
       )
     })
+
+    const results: ethers.Event[] = []
+    for (const event of matching) {
+      const deletions = await this.findAllEvents(
+        this.OVM_StateCommitmentChain,
+        this.OVM_StateCommitmentChain.filters.StateBatchDeleted(
+          event.args._batchIndex
+        )
+      )
+
+      const wasDeleted = deletions.some((deletion) => {
+        return deletion.blockNumber > event.blockNumber
+      })
+
+      if (!wasDeleted) {
+        results.push(event)
+      }
+    }
+
+    if (results.length === 0) {
+      return
+    }
+
+    if (results.length > 1) {
+      throw new Error(
+        `Found more than one matching state root for the given index, something went wrong.`
+      )
+    }
+
+    return results[0]
   }
 
   private async _getTransactionBatchEvent(
