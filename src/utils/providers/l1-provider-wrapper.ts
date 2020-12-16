@@ -342,17 +342,19 @@ export class L1ProviderWrapper {
       )
     })
 
+    const deletions = await this.findAllEvents(
+      this.OVM_StateCommitmentChain,
+      this.OVM_StateCommitmentChain.filters.StateBatchDeleted()
+    )
+
     const results: ethers.Event[] = []
     for (const event of matching) {
-      const deletions = await this.findAllEvents(
-        this.OVM_StateCommitmentChain,
-        this.OVM_StateCommitmentChain.filters.StateBatchDeleted(
-          event.args._batchIndex
-        )
-      )
-
       const wasDeleted = deletions.some((deletion) => {
-        return deletion.blockNumber > event.blockNumber
+        return (
+          deletion.blockNumber > event.blockNumber &&
+          deletion.args._batchIndex.toNumber() ===
+            event.args._batchIndex.toNumber()
+        )
       })
 
       if (!wasDeleted) {
@@ -366,7 +368,7 @@ export class L1ProviderWrapper {
 
     if (results.length > 1) {
       throw new Error(
-        `Found more than one matching state root for the given index, something went wrong.`
+        `Found more than one batch header for the same state root, this shouldn't happen.`
       )
     }
 

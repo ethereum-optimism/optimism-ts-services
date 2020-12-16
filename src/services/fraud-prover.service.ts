@@ -231,10 +231,20 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
         const proof = await this._getFraudProofData(fraudulentStateRootIndex)
 
         this.logger.info(`Initializing the fraud verification process...`)
-        await this._initializeFraudVerification(
-          proof.preStateRootProof,
-          proof.transactionProof
-        )
+        try {
+          await this._initializeFraudVerification(
+            proof.preStateRootProof,
+            proof.transactionProof
+          )
+        } catch (err) {
+          if (err.toString().includes('Reverted 0x')) {
+            this.logger.interesting(
+              `Fraud proof was initialized by someone else, moving on...`
+            )
+          } else {
+            throw err
+          }
+        }
 
         this.logger.info(`Loading fraud proof contracts...`)
         const {
@@ -337,7 +347,17 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
             try {
               await (await OVM_StateTransitioner.completeTransition()).wait()
             } catch (err) {
-              await OVM_StateTransitioner.callStatic.completeTransition()
+              try {
+                await OVM_StateTransitioner.callStatic.completeTransition()
+              } catch (err) {
+                if (err.toString().includes('Reverted 0x')) {
+                  this.logger.interesting(
+                    `State transition was completed by someone else, moving on.`
+                  )
+                } else {
+                  throw err
+                }
+              }
             }
 
             this.logger.success(`State transition completed.`)
@@ -375,7 +395,8 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
           } catch (err) {
             if (
               err.toString().includes('Invalid batch header.') ||
-              err.toString().includes('Index out of bounds.')
+              err.toString().includes('Index out of bounds.') ||
+              err.toString().includes('Reverted 0x')
             ) {
               this.logger.success(
                 `Fraud proof was finalized by someone else. Congrats!`
@@ -648,7 +669,8 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
           )
         } catch (err) {
           if (
-            err.toString().includes('Account state has already been proven')
+            err.toString().includes('Account state has already been proven') ||
+            err.toString().includes('Reverted 0x')
           ) {
             this.logger.info(
               `Someone else has already proven this account, skipping.`
@@ -710,7 +732,10 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
             )
           } catch (err) {
             if (
-              err.toString().includes('Storage slot has already been proven.')
+              err
+                .toString()
+                .includes('Storage slot has already been proven.') ||
+              err.toString().includes('Reverted 0x')
             ) {
               this.logger.info(
                 `Someone else has already proven this slot, skipping.`
@@ -845,7 +870,8 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
               .toString()
               .includes(
                 `Account state wasn't changed or has already been committed.`
-              )
+              ) ||
+            err.toString().includes('Reverted 0x')
           ) {
             this.logger.info(
               `Could not commit account because another commitment invalidated our proof, skipping for now...`
@@ -980,7 +1006,8 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
                 .toString()
                 .includes(
                   `Storage slot value wasn't changed or has already been committed.`
-                )
+                ) ||
+              err.toString().includes('Reverted 0x')
             ) {
               this.logger.info(
                 `Could not commit slot because another commitment invalidated our proof, skipping for now...`
