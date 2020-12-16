@@ -595,6 +595,7 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
         this.logger.info(
           `Someone else already proved this account, skipping...`
         )
+        continue
       }
 
       const accountCode = await this.options.l2RpcProvider.getCode(
