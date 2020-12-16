@@ -267,6 +267,7 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
             this.logger.interesting(`Proving storage slot states...`)
             await this._proveContractStorageStates(
               OVM_StateTransitioner,
+              OVM_StateManager,
               proof.stateDiffProof.accountStateProofs
             )
 
