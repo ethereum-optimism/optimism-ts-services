@@ -374,7 +374,9 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
         this.state.nextUnverifiedStateRoot = proof.preStateRootProof.stateRootBatchHeader.prevTotalElements.toNumber()
       } catch (err) {
         this.logger.error(
-          `Caught an unhandled error, see error log below:\n\n${err.stack || err}\n`
+          `Caught an unhandled error, see error log below:\n\n${
+            err.stack || err
+          }\n`
         )
       }
     }
@@ -640,6 +642,7 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
    */
   private async _proveContractStorageStates(
     OVM_StateTransitioner: Contract,
+    OVM_StateManager: Contract,
     accountStateProofs: AccountStateProof[]
   ): Promise<void> {
     for (const accountStateProof of accountStateProofs) {
@@ -648,6 +651,18 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
         this.logger.info(`Address: ${accountStateProof.address}`)
         this.logger.info(`Key: ${slot.key}`)
         this.logger.info(`Value: ${slot.value}`)
+
+        if (
+          await OVM_StateManager.hasContractStorage(
+            accountStateProof.address,
+            slot.key
+          )
+        ) {
+          this.logger.info(
+            `Someone else has already proven this slot, skipping...`
+          )
+          continue
+        }
 
         try {
           await (
