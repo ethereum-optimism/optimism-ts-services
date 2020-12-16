@@ -65,6 +65,7 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
     OVM_StateCommitmentChain: Contract
     OVM_CanonicalTransactionChain: Contract
     OVM_FraudVerifier: Contract
+    OVM_ExecutionManager: Contract
   }
 
   protected async _init(): Promise<void> {
@@ -158,12 +159,23 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
       `Connected to OVM_FraudVerifier at address: ${this.state.OVM_FraudVerifier.address}`
     )
 
+    this.logger.info('Connecting to OVM_ExecutionManager...')
+    this.state.OVM_ExecutionManager = await loadContractFromManager(
+      'OVM_ExecutionManager',
+      this.state.Lib_AddressManager,
+      this.options.l1RpcProvider
+    )
+    this.logger.info(
+      `Connected to OVM_ExecutionManager at address: ${this.state.OVM_ExecutionManager.address}`
+    )
+
     this.logger.success('Connected to all contracts.')
 
     this.state.l1Provider = new L1ProviderWrapper(
       this.options.l1RpcProvider,
       this.state.OVM_StateCommitmentChain,
       this.state.OVM_CanonicalTransactionChain,
+      this.state.OVM_ExecutionManager,
       this.options.l1StartOffset,
       this.options.l1BlockFinality
     )

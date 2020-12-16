@@ -24,6 +24,7 @@ export class L1ProviderWrapper {
     public provider: JsonRpcProvider,
     public OVM_StateCommitmentChain: Contract,
     public OVM_CanonicalTransactionChain: Contract,
+    public OVM_ExecutionManager: Contract,
     public l1StartOffset: number,
     public l1BlockFinality: number
   ) {}
@@ -197,6 +198,8 @@ export class L1ProviderWrapper {
       return
     }
 
+    const emGasLimit = await this.OVM_ExecutionManager.getMaxTransactionGasLimit()
+
     const transaction = await this.provider.getTransaction(
       event.transactionHash
     )
@@ -239,7 +242,7 @@ export class L1ProviderWrapper {
             transaction: {
               blockNumber: context.ctxBlockNumber.toNumber(),
               timestamp: context.ctxTimestamp.toNumber(),
-              gasLimit: 11000000,
+              gasLimit: emGasLimit,
               entrypoint: '0x4200000000000000000000000000000000000005',
               l1TxOrigin: '0x' + '00'.repeat(20),
               l1QueueOrigin: 0,
