@@ -437,30 +437,35 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
    * @return Index of the next fraudulent state root, if any.
    */
   private async _findNextFraudulentStateRoot(): Promise<number | undefined> {
-    while (
-      (await this.state.l1Provider.getStateRootBatchHeader(
-        this.state.nextUnverifiedStateRoot
-      )) !== undefined
-    ) {
-      this.logger.info(
-        `Checking state root for mismatch: ${this.state.nextUnverifiedStateRoot}`
-      )
+    let nextBatchHeader = await this.state.l1Provider.getStateRootBatchHeader(
+      this.state.nextUnverifiedStateRoot
+    )
 
-      const l1StateRoot = await this.state.l1Provider.getStateRoot(
+    while (nextBatchHeader !== undefined) {
+      const nextBatchStateRoots = await this.state.l1Provider.getBatchStateRoots(
         this.state.nextUnverifiedStateRoot
       )
 
-      const l2StateRoot = await this.state.l2Provider.getStateRoot(
-        this.state.nextUnverifiedStateRoot + this.options.l2BlockOffset
-      )
+      for (let i = 0; i < nextBatchHeader.batchSize.toNumber(); i++) {
+        const index = i + nextBatchHeader.prevTotalElements.toNumber()
+        this.logger.info(`Checking state root for mismatch: ${index}`)
 
-      if (l1StateRoot !== l2StateRoot) {
-        this.logger.interesting(`L1 State Root: ${l1StateRoot}`)
-        this.logger.interesting(`L2 State Root: ${l2StateRoot}`)
-        return this.state.nextUnverifiedStateRoot
-      } else {
-        this.state.nextUnverifiedStateRoot += 1
+        const l1StateRoot = nextBatchStateRoots[i]
+        const l2StateRoot = await this.state.l2Provider.getStateRoot(
+          index + this.options.l2BlockOffset
+        )
+
+        if (l1StateRoot !== l2StateRoot) {
+          this.logger.interesting(`L1 State Root: ${l1StateRoot}`)
+          this.logger.interesting(`L2 State Root: ${l2StateRoot}`)
+          return this.state.nextUnverifiedStateRoot
+        }
       }
+
+      this.state.nextUnverifiedStateRoot += nextBatchHeader.batchSize.toNumber()
+      nextBatchHeader = await this.state.l1Provider.getStateRootBatchHeader(
+        this.state.nextUnverifiedStateRoot
+      )
     }
   }
 
