@@ -306,7 +306,14 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
             if (
               err
                 .toString()
-                .includes('Function must be called during the correct phase.')
+                .includes(
+                  'Function must be called during the correct phase.'
+                ) ||
+              err
+                .toString()
+                .includes(
+                  '46756e6374696f6e206d7573742062652063616c6c656420647572696e672074686520636f72726563742070686173652e'
+                )
             ) {
               this.logger.interesting(
                 `Phase was completed by someone else, moving on.`
@@ -365,7 +372,14 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
             if (
               err
                 .toString()
-                .includes('Function must be called during the correct phase.')
+                .includes(
+                  'Function must be called during the correct phase.'
+                ) ||
+              err
+                .toString()
+                .includes(
+                  '46756e6374696f6e206d7573742062652063616c6c656420647572696e672074686520636f72726563742070686173652e'
+                )
             ) {
               this.logger.interesting(
                 `Phase was completed by someone else, moving on.`
