@@ -51,8 +51,9 @@ const main = async () => {
     if (!CLIENT_PRIVATE_KEY) {
       throw new Error('Must pass CLIENT_PRIVATE_KEY')
     }
+    const privateKey = CLIENT_PRIVATE_KEY.replace(/\\n/g, '\n')
     spreadsheet = new SpreadSheet(SHEET_ID)
-    await spreadsheet.init(CLIENT_EMAIL, CLIENT_PRIVATE_KEY)
+    await spreadsheet.init(CLIENT_EMAIL, privateKey)
   }
 
   const service = new MessageRelayerService({
