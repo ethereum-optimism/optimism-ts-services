@@ -656,7 +656,7 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
         if (
           await OVM_StateManager.hasContractStorage(
             accountStateProof.address,
-            slot.key
+            toBytes32(slot.key)
           )
         ) {
           this.logger.info(
