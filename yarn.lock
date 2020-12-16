@@ -23,10 +23,10 @@
     chalk "^2.0.0"
     js-tokens "^4.0.0"
 
-"@eth-optimism/contracts@^0.0.2-alpha.14":
-  version "0.0.2-alpha.14"
-  resolved "https://registry.yarnpkg.com/@eth-optimism/contracts/-/contracts-0.0.2-alpha.14.tgz#382ae9250e7d89e7729bcfe73ffdb85897e385c2"
-  integrity sha512-EeOKiQ+Tu/bZqlq2bsXJegRYHhBXlcDO+fNXG1NJyies23rcLrjR7LMocJmw/F9TpYJ08UqvOHttD5w//cntpg==
+"@eth-optimism/contracts@^0.0.2-alpha.15":
+  version "0.0.2-alpha.15"
+  resolved "https://registry.yarnpkg.com/@eth-optimism/contracts/-/contracts-0.0.2-alpha.15.tgz#d602bdb6f1186d111ce9f7c282fc80e023086892"
+  integrity sha512-upJfYHDWQY7nM0AYT9MKQiuOus2uMUhvqS962qiBq3Ly/9GUq5mS0UALynsrZBGbzT6pflOMKFFEv7jQEORGmA==
   dependencies:
     "@eth-optimism/solc" "^0.6.12-alpha.1"
     "@ethersproject/contracts" "^5.0.5"

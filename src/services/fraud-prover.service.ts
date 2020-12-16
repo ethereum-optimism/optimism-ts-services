@@ -374,7 +374,7 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
         this.state.nextUnverifiedStateRoot = proof.preStateRootProof.stateRootBatchHeader.prevTotalElements.toNumber()
       } catch (err) {
         this.logger.error(
-          `Caught an unhandled error, see error log below:\n\n${err}\n`
+          `Caught an unhandled error, see error log below:\n\n${err.stack || err}\n`
         )
       }
     }
