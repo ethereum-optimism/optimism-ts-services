@@ -168,6 +168,27 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
       this.options.l1BlockFinality
     )
 
+    this.logger.info(
+      `Caching events for relevant contracts, this might take a while...`
+    )
+    this.logger.info(`Caching events for OVM_StateCommitmentChain...`)
+    await this.state.l1Provider.findAllEvents(
+      this.state.OVM_StateCommitmentChain,
+      this.state.OVM_StateCommitmentChain.filters.StateBatchAppended()
+    )
+
+    this.logger.info(`Caching events for OVM_CanonicalTransactionChain...`)
+    await this.state.l1Provider.findAllEvents(
+      this.state.OVM_CanonicalTransactionChain,
+      this.state.OVM_CanonicalTransactionChain.filters.TransactionBatchAppended()
+    )
+    await this.state.l1Provider.findAllEvents(
+      this.state.OVM_CanonicalTransactionChain,
+      this.state.OVM_CanonicalTransactionChain.filters.SequencerBatchAppended()
+    )
+
+    this.logger.success(`Finished caching events!`)
+
     this.state.nextUnverifiedStateRoot =
       this.options.fromL2TransactionIndex || 0
   }
@@ -917,7 +938,10 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
         transactionProof.transaction,
         transactionProof.transactionChainElement,
         transactionProof.transactionBatchHeader,
-        transactionProof.transactionProof
+        transactionProof.transactionProof,
+        {
+          gasLimit: this.options.deployGasLimit,
+        }
       )
     ).wait()
   }

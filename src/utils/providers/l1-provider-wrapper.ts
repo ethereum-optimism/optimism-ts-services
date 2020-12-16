@@ -18,7 +18,7 @@ export class L1ProviderWrapper {
       startingBlockNumber: number
       events: ethers.Event[]
     }
-  }
+  } = {}
 
   constructor(
     public provider: JsonRpcProvider,
@@ -30,11 +30,12 @@ export class L1ProviderWrapper {
 
   public async findAllEvents(
     contract: Contract,
-    filter: ethers.EventFilter
+    filter: ethers.EventFilter,
+    fromBlock?: number
   ): Promise<ethers.Event[]> {
     const cache = this.eventCache[filter.topics[0] as string] || {
-      startingBlockNumber: this.l1StartOffset,
-      events: []
+      startingBlockNumber: fromBlock || this.l1StartOffset,
+      events: [],
     }
 
     let events: ethers.Event[] = []
@@ -46,19 +47,19 @@ export class L1ProviderWrapper {
           filter,
           startingBlockNumber,
           Math.min(
-            startingBlockNumber + 1000,
+            startingBlockNumber + 2000,
             latestL1BlockNumber - this.l1BlockFinality
           )
         )
       )
 
-      if (startingBlockNumber + 1000 > latestL1BlockNumber) {
+      if (startingBlockNumber + 2000 > latestL1BlockNumber) {
         cache.startingBlockNumber = latestL1BlockNumber
         cache.events = cache.events.concat(events)
         break
       }
 
-      startingBlockNumber += 1000
+      startingBlockNumber += 2000
       latestL1BlockNumber = await this.provider.getBlockNumber()
     }
 
@@ -238,7 +239,7 @@ export class L1ProviderWrapper {
             transaction: {
               blockNumber: context.ctxBlockNumber.toNumber(),
               timestamp: context.ctxTimestamp.toNumber(),
-              gasLimit: 12000000,
+              gasLimit: 11000000,
               entrypoint: '0x4200000000000000000000000000000000000005',
               l1TxOrigin: '0x' + '00'.repeat(20),
               l1QueueOrigin: 0,
