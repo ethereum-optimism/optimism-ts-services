@@ -13,20 +13,34 @@ import {
 import { fromHexString, toHexString } from '../hex-utils'
 
 export class L1ProviderWrapper {
+  private eventCache: {
+    [topic: string]: {
+      startingBlockNumber: number
+      events: ethers.Event[]
+    }
+  } = {}
+
   constructor(
     public provider: JsonRpcProvider,
     public OVM_StateCommitmentChain: Contract,
     public OVM_CanonicalTransactionChain: Contract,
+    public OVM_ExecutionManager: Contract,
     public l1StartOffset: number,
     public l1BlockFinality: number
   ) {}
 
   public async findAllEvents(
     contract: Contract,
-    filter: ethers.EventFilter
+    filter: ethers.EventFilter,
+    fromBlock?: number
   ): Promise<ethers.Event[]> {
+    const cache = this.eventCache[filter.topics[0] as string] || {
+      startingBlockNumber: fromBlock || this.l1StartOffset,
+      events: [],
+    }
+
     let events: ethers.Event[] = []
-    let startingBlockNumber = this.l1StartOffset
+    let startingBlockNumber = cache.startingBlockNumber
     let latestL1BlockNumber = await this.provider.getBlockNumber()
     while (startingBlockNumber < latestL1BlockNumber) {
       events = events.concat(
@@ -34,17 +48,25 @@ export class L1ProviderWrapper {
           filter,
           startingBlockNumber,
           Math.min(
-            startingBlockNumber + 1000,
+            startingBlockNumber + 2000,
             latestL1BlockNumber - this.l1BlockFinality
           )
         )
       )
 
-      startingBlockNumber += 1000
+      if (startingBlockNumber + 2000 > latestL1BlockNumber) {
+        cache.startingBlockNumber = latestL1BlockNumber
+        cache.events = cache.events.concat(events)
+        break
+      }
+
+      startingBlockNumber += 2000
       latestL1BlockNumber = await this.provider.getBlockNumber()
     }
 
-    return events
+    this.eventCache[filter.topics[0] as string] = cache
+
+    return cache.events
   }
 
   public async getStateRootBatchHeader(
@@ -176,6 +198,8 @@ export class L1ProviderWrapper {
       return
     }
 
+    const emGasLimit = await this.OVM_ExecutionManager.getMaxTransactionGasLimit()
+
     const transaction = await this.provider.getTransaction(
       event.transactionHash
     )
@@ -218,7 +242,7 @@ export class L1ProviderWrapper {
             transaction: {
               blockNumber: context.ctxBlockNumber.toNumber(),
               timestamp: context.ctxTimestamp.toNumber(),
-              gasLimit: 12000000,
+              gasLimit: emGasLimit,
               entrypoint: '0x4200000000000000000000000000000000000005',
               l1TxOrigin: '0x' + '00'.repeat(20),
               l1QueueOrigin: 0,
@@ -309,7 +333,7 @@ export class L1ProviderWrapper {
       return
     }
 
-    return events.find((event) => {
+    const matching = events.filter((event) => {
       return (
         event.args._prevTotalElements.toNumber() <= index &&
         event.args._prevTotalElements.toNumber() +
@@ -317,6 +341,38 @@ export class L1ProviderWrapper {
           index
       )
     })
+
+    const deletions = await this.findAllEvents(
+      this.OVM_StateCommitmentChain,
+      this.OVM_StateCommitmentChain.filters.StateBatchDeleted()
+    )
+
+    const results: ethers.Event[] = []
+    for (const event of matching) {
+      const wasDeleted = deletions.some((deletion) => {
+        return (
+          deletion.blockNumber > event.blockNumber &&
+          deletion.args._batchIndex.toNumber() ===
+            event.args._batchIndex.toNumber()
+        )
+      })
+
+      if (!wasDeleted) {
+        results.push(event)
+      }
+    }
+
+    if (results.length === 0) {
+      return
+    }
+
+    if (results.length > 1) {
+      throw new Error(
+        `Found more than one batch header for the same state root, this shouldn't happen.`
+      )
+    }
+
+    return results[0]
   }
 
   private async _getTransactionBatchEvent(
