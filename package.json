@@ -15,7 +15,7 @@
     "lint:fix:typescript": "prettier --config prettier-config.json --write \"{src,exec,test}/**/*.ts\""
   },
   "dependencies": {
-    "@eth-optimism/contracts": "^0.0.2-alpha.13",
+    "@eth-optimism/contracts": "^0.0.2-alpha.14",
     "@ethersproject/keccak256": "^5.0.6",
     "@ethersproject/providers": "^5.0.16",
     "@types/debug": "^4.1.5",
