@@ -412,9 +412,7 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
               err.toString().includes('Index out of bounds.') ||
               err.toString().includes('Reverted 0x')
             ) {
-              this.logger.success(
-                `Fraud proof was finalized by someone else. Congrats!`
-              )
+              this.logger.success(`Fraud proof was finalized by someone else.`)
             } else {
               throw err
             }
@@ -456,13 +454,18 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
         )
 
         if (l1StateRoot !== l2StateRoot) {
+          this.logger.info(`State roots don't match 𐄂`)
           this.logger.interesting(`L1 State Root: ${l1StateRoot}`)
           this.logger.interesting(`L2 State Root: ${l2StateRoot}`)
           return index
+        } else {
+          this.logger.info(`State root was not mismatched ✓`)
         }
       }
 
-      this.state.nextUnverifiedStateRoot += nextBatchHeader.batchSize.toNumber()
+      this.state.nextUnverifiedStateRoot =
+        nextBatchHeader.prevTotalElements.toNumber() +
+        nextBatchHeader.batchSize.toNumber()
       nextBatchHeader = await this.state.l1Provider.getStateRootBatchHeader(
         this.state.nextUnverifiedStateRoot
       )
