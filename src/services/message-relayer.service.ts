@@ -157,6 +157,7 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
         }
 
         this.state.lastFinalizedTxHeight = this.state.nextUnfinalizedTxHeight
+
         while (
           await this._isTransactionFinalized(this.state.nextUnfinalizedTxHeight)
         ) {
@@ -413,18 +414,23 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
   ): Promise<void> {
     if (this.options.spreadsheetMode) {
       try {
-        const result = await this.options.spreadsheet.addRow({
+        await this.options.spreadsheet.addRow({
           target: message.target,
           sender: message.sender,
           message: message.message,
-          messageNonce: message.messageNonce,
+          messageNonce: message.messageNonce.toString(),
           encodedMessage: message.encodedMessage,
           encodedMessageHash: message.encodedMessageHash,
           parentTransactionIndex: message.parentTransactionIndex,
           parentTransactionHash: message.parentTransactionIndex,
           stateRoot: proof.stateRoot,
-          stateRootBatchHeader: proof.stateRootBatchHeader,
-          stateRootProof: proof.stateRootProof,
+          batchIndex: proof.stateRootBatchHeader.batchIndex.toString(),
+          batchRoot: proof.stateRootBatchHeader.batchRoot,
+          batchSize: proof.stateRootBatchHeader.batchSize.toString(),
+          prevTotalElements: proof.stateRootBatchHeader.prevTotalElements.toString(),
+          extraData: proof.stateRootBatchHeader.extraData,
+          index: proof.stateRootProof.index,
+          siblings: proof.stateRootProof.siblings.join(','),
           stateTrieWitness: proof.stateTrieWitness.toString('hex'),
           storageTrieWitness: proof.storageTrieWitness.toString('hex')
         })
