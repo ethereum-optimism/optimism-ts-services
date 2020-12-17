@@ -157,7 +157,6 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
         }
 
         this.state.lastFinalizedTxHeight = this.state.nextUnfinalizedTxHeight
-
         while (
           await this._isTransactionFinalized(this.state.nextUnfinalizedTxHeight)
         ) {
