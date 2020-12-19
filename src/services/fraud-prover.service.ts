@@ -31,6 +31,10 @@ import {
   toBytes32,
   makeTrieFromProofs,
   shuffle,
+  smartSendTransaction,
+  waitForNetwork,
+  loadOptimismContracts,
+  OptimismContracts,
 } from '../utils'
 
 interface FraudProverOptions {
@@ -62,145 +66,41 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
     nextUnverifiedStateRoot: number
     l1Provider: L1ProviderWrapper
     l2Provider: L2ProviderWrapper
-    Lib_AddressManager: Contract
-    OVM_StateCommitmentChain: Contract
-    OVM_CanonicalTransactionChain: Contract
-    OVM_FraudVerifier: Contract
-    OVM_ExecutionManager: Contract
+    contracts: OptimismContracts
   }
 
   protected async _init(): Promise<void> {
     // Need to improve this, sorry.
     this.state = {} as any
 
-    this.logger.info(`Trying to connect to the L1 network...`)
-    for (let i = 0; i < 10; i++) {
-      try {
-        await this.options.l1RpcProvider.detectNetwork()
-        this.logger.info(`Successfully connected to the L1 network.`)
-        break
-      } catch (err) {
-        if (i < 9) {
-          this.logger.info(
-            `Unable to connect to L1 network, will try ${
-              10 - i
-            } more time(s)...`
-          )
-          await sleep(1000)
-        } else {
-          throw new Error(
-            `Unable to connect to the L1 network, check that your L1 endpoint is correct.`
-          )
-        }
-      }
-    }
+    await waitForNetwork(
+      this.options.l1RpcProvider,
+      'Ethereum (Layer 1)',
+      this.logger
+    )
 
-    this.logger.info(`Trying to connect to the L2 network...`)
-    for (let i = 0; i < 10; i++) {
-      try {
-        await this.options.l2RpcProvider.detectNetwork()
-        this.logger.info(`Successfully connected to the L2 network.`)
-        break
-      } catch (err) {
-        if (i < 9) {
-          this.logger.info(
-            `Unable to connect to L2 network, will try ${
-              10 - i
-            } more time(s)...`
-          )
-          await sleep(1000)
-        } else {
-          throw new Error(
-            `Unable to connect to the L2 network, check that your L2 endpoint is correct.`
-          )
-        }
-      }
-    }
+    await waitForNetwork(
+      this.options.l2RpcProvider,
+      'Optimism (Layer 2)',
+      this.logger
+    )
 
     this.state.l2Provider = new L2ProviderWrapper(this.options.l2RpcProvider)
 
-    this.logger.info(`Connecting to Lib_AddressManager...`)
-    const addressManagerAddress = await this.state.l2Provider.getAddressManagerAddress()
-    this.state.Lib_AddressManager = loadContract(
-      'Lib_AddressManager',
-      addressManagerAddress,
-      this.options.l1RpcProvider
+    this.state.contracts = await loadOptimismContracts(
+      this.options.l1RpcProvider,
+      this.options.l2RpcProvider,
+      this.options.l1Wallet
     )
-    this.logger.info(
-      `Connected to Lib_AddressManager at address: ${this.state.Lib_AddressManager.address}`
-    )
-
-    this.logger.info('Connecting to OVM_StateCommitmentChain...')
-    this.state.OVM_StateCommitmentChain = await loadContractFromManager(
-      'OVM_StateCommitmentChain',
-      this.state.Lib_AddressManager,
-      this.options.l1RpcProvider
-    )
-    this.logger.info(
-      `Connected to OVM_StateCommitmentChain at address: ${this.state.OVM_StateCommitmentChain.address}`
-    )
-
-    this.logger.info('Connecting to OVM_CanonicalTransactionChain...')
-    this.state.OVM_CanonicalTransactionChain = await loadContractFromManager(
-      'OVM_CanonicalTransactionChain',
-      this.state.Lib_AddressManager,
-      this.options.l1RpcProvider
-    )
-    this.logger.info(
-      `Connected to OVM_CanonicalTransactionChain at address: ${this.state.OVM_CanonicalTransactionChain.address}`
-    )
-
-    this.logger.info('Connecting to OVM_FraudVerifier...')
-    this.state.OVM_FraudVerifier = await loadContractFromManager(
-      'OVM_FraudVerifier',
-      this.state.Lib_AddressManager,
-      this.options.l1RpcProvider
-    )
-    this.logger.info(
-      `Connected to OVM_FraudVerifier at address: ${this.state.OVM_FraudVerifier.address}`
-    )
-
-    this.logger.info('Connecting to OVM_ExecutionManager...')
-    this.state.OVM_ExecutionManager = await loadContractFromManager(
-      'OVM_ExecutionManager',
-      this.state.Lib_AddressManager,
-      this.options.l1RpcProvider
-    )
-    this.logger.info(
-      `Connected to OVM_ExecutionManager at address: ${this.state.OVM_ExecutionManager.address}`
-    )
-
-    this.logger.success('Connected to all contracts.')
 
     this.state.l1Provider = new L1ProviderWrapper(
       this.options.l1RpcProvider,
-      this.state.OVM_StateCommitmentChain,
-      this.state.OVM_CanonicalTransactionChain,
-      this.state.OVM_ExecutionManager,
+      this.state.contracts.OVM_StateCommitmentChain,
+      this.state.contracts.OVM_CanonicalTransactionChain,
+      this.state.contracts.OVM_ExecutionManager,
       this.options.l1StartOffset,
       this.options.l1BlockFinality
     )
-
-    this.logger.info(
-      `Caching events for relevant contracts, this might take a while...`
-    )
-    this.logger.info(`Caching events for OVM_StateCommitmentChain...`)
-    await this.state.l1Provider.findAllEvents(
-      this.state.OVM_StateCommitmentChain,
-      this.state.OVM_StateCommitmentChain.filters.StateBatchAppended()
-    )
-
-    this.logger.info(`Caching events for OVM_CanonicalTransactionChain...`)
-    await this.state.l1Provider.findAllEvents(
-      this.state.OVM_CanonicalTransactionChain,
-      this.state.OVM_CanonicalTransactionChain.filters.TransactionBatchAppended()
-    )
-    await this.state.l1Provider.findAllEvents(
-      this.state.OVM_CanonicalTransactionChain,
-      this.state.OVM_CanonicalTransactionChain.filters.SequencerBatchAppended()
-    )
-
-    this.logger.success(`Finished caching events!`)
 
     this.state.nextUnverifiedStateRoot =
       this.options.fromL2TransactionIndex || 0
@@ -231,20 +131,26 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
         const proof = await this._getFraudProofData(fraudulentStateRootIndex)
 
         this.logger.info(`Initializing the fraud verification process...`)
-        try {
-          await this._initializeFraudVerification(
-            proof.preStateRootProof,
-            proof.transactionProof
-          )
-        } catch (err) {
-          if (err.toString().includes('Reverted 0x')) {
-            this.logger.interesting(
-              `Fraud proof was initialized by someone else, moving on...`
-            )
-          } else {
-            throw err
-          }
-        }
+        await smartSendTransaction({
+          contract: this.state.contracts.OVM_FraudVerifier,
+          functionName: 'initializeFraudVerification',
+          functionParams: [
+            proof.preStateRootProof.stateRoot,
+            proof.preStateRootProof.stateRootBatchHeader,
+            proof.preStateRootProof.stateRootProof,
+            proof.transactionProof.transaction,
+            proof.transactionProof.transactionChainElement,
+            proof.transactionProof.transactionBatchHeader,
+            proof.transactionProof.transactionProof,
+          ],
+          acceptableErrors: [
+            {
+              errors: ['Reverted 0x'],
+              reason: `Fraud proof was initialized by someone else, moving on...`,
+            },
+          ],
+          logger: this.logger,
+        })
 
         this.logger.info(`Loading fraud proof contracts...`)
         const {
@@ -258,11 +164,10 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
         )
 
         // PRE_EXECUTION phase.
-        if (
-          (await OVM_StateTransitioner.phase()) ===
-          StateTransitionPhase.PRE_EXECUTION
-        ) {
-          try {
+        await this._runPhase(
+          OVM_StateTransitioner,
+          StateTransitionPhase.PRE_EXECUTION,
+          async () => {
             this.logger.interesting(
               `Fraud proof is now in the PRE_EXECUTION phase.`
             )
@@ -283,53 +188,21 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
             )
 
             this.logger.interesting(`Executing transaction...`)
-            try {
-              await (
-                await OVM_StateTransitioner.applyTransaction(
-                  proof.transactionProof.transaction,
-                  {
-                    gasLimit: this.options.runGasLimit,
-                  }
-                )
-              ).wait()
-            } catch (err) {
-              await OVM_StateTransitioner.callStatic.applyTransaction(
-                proof.transactionProof.transaction,
-                {
-                  gasLimit: this.options.runGasLimit,
-                }
-              )
-            }
-
+            await smartSendTransaction({
+              contract: OVM_StateTransitioner,
+              functionName: 'applyTransaction',
+              functionParams: [proof.transactionProof.transaction],
+              logger: this.logger,
+            })
             this.logger.success(`Transaction successfully executed.`)
-          } catch (err) {
-            if (
-              err
-                .toString()
-                .includes(
-                  'Function must be called during the correct phase.'
-                ) ||
-              err
-                .toString()
-                .includes(
-                  '46756e6374696f6e206d7573742062652063616c6c656420647572696e672074686520636f72726563742070686173652e'
-                )
-            ) {
-              this.logger.interesting(
-                `Phase was completed by someone else, moving on.`
-              )
-            } else {
-              throw err
-            }
           }
-        }
+        )
 
         // POST_EXECUTION phase.
-        if (
-          (await OVM_StateTransitioner.phase()) ===
-          StateTransitionPhase.POST_EXECUTION
-        ) {
-          try {
+        await this._runPhase(
+          OVM_StateTransitioner,
+          StateTransitionPhase.POST_EXECUTION,
+          async () => {
             this.logger.interesting(
               `Fraud proof is now in the POST_EXECUTION phase.`
             )
@@ -351,73 +224,55 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
             )
 
             this.logger.interesting(`Completing the state transition...`)
-            try {
-              await (await OVM_StateTransitioner.completeTransition()).wait()
-            } catch (err) {
-              try {
-                await OVM_StateTransitioner.callStatic.completeTransition()
-              } catch (err) {
-                if (err.toString().includes('Reverted 0x')) {
-                  this.logger.interesting(
-                    `State transition was completed by someone else, moving on.`
-                  )
-                } else {
-                  throw err
-                }
-              }
-            }
-
+            await smartSendTransaction({
+              contract: OVM_StateTransitioner,
+              functionName: 'completeTransition',
+              acceptableErrors: [
+                {
+                  errors: ['Reverted 0x'],
+                  reason: `State transition was completed by someone else, moving on.`,
+                },
+              ],
+              logger: this.logger,
+            })
             this.logger.success(`State transition completed.`)
-          } catch (err) {
-            if (
-              err
-                .toString()
-                .includes(
-                  'Function must be called during the correct phase.'
-                ) ||
-              err
-                .toString()
-                .includes(
-                  '46756e6374696f6e206d7573742062652063616c6c656420647572696e672074686520636f72726563742070686173652e'
-                )
-            ) {
-              this.logger.interesting(
-                `Phase was completed by someone else, moving on.`
-              )
-            } else {
-              throw err
-            }
           }
-        }
+        )
 
         // COMPLETE phase.
-        if (
-          (await OVM_StateTransitioner.phase()) ===
-          StateTransitionPhase.COMPLETE
-        ) {
-          this.logger.interesting(`Fraud proof is now in the COMPLETE phase.`)
+        await this._runPhase(
+          OVM_StateTransitioner,
+          StateTransitionPhase.COMPLETE,
+          async () => {
+            this.logger.interesting(`Fraud proof is now in the COMPLETE phase.`)
 
-          this.logger.interesting(`Attempting to finalize the fraud proof...`)
-          try {
-            await this._finalizeFraudVerification(
-              proof.preStateRootProof,
-              proof.postStateRootProof,
-              proof.transactionProof.transaction
-            )
-
-            this.logger.success(`Fraud proof finalized! Congrats.`)
-          } catch (err) {
-            if (
-              err.toString().includes('Invalid batch header.') ||
-              err.toString().includes('Index out of bounds.') ||
-              err.toString().includes('Reverted 0x')
-            ) {
-              this.logger.success(`Fraud proof was finalized by someone else.`)
-            } else {
-              throw err
-            }
+            this.logger.interesting(`Attempting to finalize the fraud proof...`)
+            await smartSendTransaction({
+              contract: this.state.contracts.OVM_FraudVerifier,
+              functionName: 'finalizeFraudVerification',
+              functionParams: [
+                proof.preStateRootProof.stateRoot,
+                proof.preStateRootProof.stateRootBatchHeader,
+                proof.preStateRootProof.stateRootProof,
+                hashOvmTransaction(proof.transactionProof.transaction),
+                proof.preStateRootProof.stateRoot,
+                proof.preStateRootProof.stateRootBatchHeader,
+                proof.preStateRootProof.stateRootProof,
+              ],
+              acceptableErrors: [
+                {
+                  errors: [
+                    'Invalid batch header.',
+                    'Index out of bounds.',
+                    'Reverted 0x.',
+                  ],
+                  reason: 'Fraud proof was finalized by someone else.',
+                },
+              ],
+              logger: this.logger,
+            })
           }
-        }
+        )
 
         this.state.nextUnverifiedStateRoot = proof.preStateRootProof.stateRootBatchHeader.prevTotalElements.toNumber()
       } catch (err) {
@@ -606,10 +461,46 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
     preStateRoot: string,
     transaction: OvmTransaction
   ): Promise<string> {
-    return this.state.OVM_FraudVerifier.getStateTransitioner(
+    return this.state.contracts.OVM_FraudVerifier.getStateTransitioner(
       preStateRoot,
       hashOvmTransaction(transaction)
     )
+  }
+
+  /**
+   * Executes a function to complete a "phase" of the state transitioner. Essentially a utility
+   * wrapper around the basic checks we need to do on every phase.
+   * @param OVM_StateTransitioner State transitioner to interact with.
+   * @param phase ID of the phase we're currently completing.
+   * @param fn Function to execute for the given phase.
+   */
+  private async _runPhase(
+    OVM_StateTransitioner: Contract,
+    phase: StateTransitionPhase,
+    fn: () => Promise<any>
+  ): Promise<void> {
+    if ((await OVM_StateTransitioner.phase()) === phase) {
+      try {
+        await fn()
+      } catch (err) {
+        if (
+          err
+            .toString()
+            .includes('Function must be called during the correct phase.') ||
+          err
+            .toString()
+            .includes(
+              '46756e6374696f6e206d7573742062652063616c6c656420647572696e672074686520636f72726563742070686173652e'
+            )
+        ) {
+          this.logger.interesting(
+            `Phase was completed by someone else, moving on.`
+          )
+        } else {
+          throw err
+        }
+      }
+    }
   }
 
   /**
@@ -672,36 +563,22 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
         this.logger.info(`Deployed a copy of the account, attempting proof...`)
       }
 
-      try {
-        await (
-          await OVM_StateTransitioner.proveContractState(
-            accountStateProof.address,
-            ethContractAddress,
-            rlp.encode(accountStateProof.accountProof)
-          )
-        ).wait()
-
-        this.logger.success(`Account state proven.`)
-      } catch (err) {
-        try {
-          await OVM_StateTransitioner.callStatic.proveContractState(
-            accountStateProof.address,
-            ethContractAddress,
-            rlp.encode(accountStateProof.accountProof)
-          )
-        } catch (err) {
-          if (
-            err.toString().includes('Account state has already been proven') ||
-            err.toString().includes('Reverted 0x')
-          ) {
-            this.logger.info(
-              `Someone else has already proven this account, skipping.`
-            )
-          } else {
-            throw err
-          }
-        }
-      }
+      await smartSendTransaction({
+        contract: OVM_StateTransitioner,
+        functionName: 'proveContractState',
+        functionParams: [
+          accountStateProof.address,
+          ethContractAddress,
+          rlp.encode(accountStateProof.accountProof),
+        ],
+        acceptableErrors: [
+          {
+            errors: ['Account state has already been proven', 'Reverted 0x'],
+            reason: 'Someone else has already proven this account, skipping.',
+          },
+        ],
+        logger: this.logger,
+      })
     }
   }
 
@@ -735,38 +612,22 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
           continue
         }
 
-        try {
-          await (
-            await OVM_StateTransitioner.proveStorageSlot(
-              accountStateProof.address,
-              toBytes32(slot.key),
-              rlp.encode(slot.proof)
-            )
-          ).wait()
-
-          this.logger.success(`Slot value proven.`)
-        } catch (err) {
-          try {
-            await OVM_StateTransitioner.callStatic.proveStorageSlot(
-              accountStateProof.address,
-              toBytes32(slot.key),
-              rlp.encode(slot.proof)
-            )
-          } catch (err) {
-            if (
-              err
-                .toString()
-                .includes('Storage slot has already been proven.') ||
-              err.toString().includes('Reverted 0x')
-            ) {
-              this.logger.info(
-                `Someone else has already proven this slot, skipping.`
-              )
-            } else {
-              throw err
-            }
-          }
-        }
+        await smartSendTransaction({
+          contract: OVM_StateTransitioner,
+          functionName: 'proveStorageSlot',
+          functionParams: [
+            accountStateProof.address,
+            toBytes32(slot.key),
+            rlp.encode(slot.proof),
+          ],
+          acceptableErrors: [
+            {
+              errors: ['Storage slot has already been proven.', 'Reverted 0x'],
+              reason: 'Someone else has already proven this slot, skipping.',
+            },
+          ],
+          logger: this.logger,
+        })
       }
     }
   }
@@ -863,46 +724,23 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
       this.logger.info(`Storage Root: ${updatedAccountState.storageRoot}`)
       this.logger.info(`Code Hash: ${updatedAccountState.codeHash}`)
 
-      try {
-        await (
-          await OVM_StateTransitioner.commitContractState(
-            nextUncommittedAccount.address,
-            accountInclusionProof,
-            {
-              gasLimit: this.options.deployGasLimit,
-            }
-          )
-        ).wait()
-
-        this.logger.success(`Account committed.`)
-      } catch (err) {
-        try {
-          await OVM_StateTransitioner.callStatic.commitContractState(
-            nextUncommittedAccount.address,
-            accountInclusionProof,
-            {
-              gasLimit: this.options.deployGasLimit,
-            }
-          )
-        } catch (err) {
-          if (
-            err.toString().includes('invalid opcode') ||
-            err.toString().includes('Invalid root hash') ||
-            err
-              .toString()
-              .includes(
-                `Account state wasn't changed or has already been committed.`
-              ) ||
-            err.toString().includes('Reverted 0x')
-          ) {
-            this.logger.info(
-              `Could not commit account because another commitment invalidated our proof, skipping for now...`
-            )
-          } else {
-            throw err
-          }
-        }
-      }
+      await smartSendTransaction({
+        contract: OVM_StateTransitioner,
+        functionName: 'commitContractState',
+        functionParams: [nextUncommittedAccount.address, accountInclusionProof],
+        acceptableErrors: [
+          {
+            errors: [
+              'invalid opcode',
+              'Invalid root hash',
+              `Account state wasn't changed or has already been committed`,
+              `Reverted 0x`,
+            ],
+            reason: `Could not commit account because another commitment invalidated our proof, skipping for now...`,
+          },
+        ],
+        logger: this.logger,
+      })
     }
   }
 
@@ -997,136 +835,28 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
         this.logger.info(`Key: ${nextUncommittedStorageProof.key}`)
         this.logger.info(`Value: ${updatedSlotValue}`)
 
-        try {
-          await (
-            await OVM_StateTransitioner.commitStorageSlot(
-              accountStateProof.address,
-              nextUncommittedStorageProof.key,
-              slotInclusionProof,
-              {
-                gasLimit: this.options.deployGasLimit,
-              }
-            )
-          ).wait()
-
-          this.logger.success(`Storage slot committed.`)
-        } catch (err) {
-          try {
-            await OVM_StateTransitioner.callStatic.commitStorageSlot(
-              accountStateProof.address,
-              nextUncommittedStorageProof.key,
-              slotInclusionProof,
-              {
-                gasLimit: this.options.deployGasLimit,
-              }
-            )
-          } catch (err) {
-            if (
-              err.toString().includes('invalid opcode') ||
-              err.toString().includes('Invalid root hash') ||
-              err
-                .toString()
-                .includes(
-                  `Storage slot value wasn't changed or has already been committed.`
-                ) ||
-              err.toString().includes('Reverted 0x')
-            ) {
-              this.logger.info(
-                `Could not commit slot because another commitment invalidated our proof, skipping for now...`
-              )
-            } else {
-              throw err
-            }
-          }
-        }
+        await smartSendTransaction({
+          contract: OVM_StateTransitioner,
+          functionName: 'commitStorageSlot',
+          functionParams: [
+            accountStateProof.address,
+            nextUncommittedStorageProof.key,
+            slotInclusionProof,
+          ],
+          acceptableErrors: [
+            {
+              errors: [
+                'invalid opcode',
+                'Invalid root hash',
+                `Account state wasn't changed or has already been committed`,
+                `Reverted 0x`,
+              ],
+              reason: `Could not commit slot because another commitment invalidated our proof, skipping for now...`,
+            },
+          ],
+          logger: this.logger,
+        })
       }
-    }
-  }
-
-  /**
-   * Initializes the fraud verification process.
-   * @param preStateRootProof Proof data for the pre-state root.
-   * @param transactionProof Proof data for the transaction being verified.
-   */
-  private async _initializeFraudVerification(
-    preStateRootProof: StateRootBatchProof,
-    transactionProof: TransactionBatchProof
-  ): Promise<void> {
-    const stateTransitionerAddress = await this._getStateTransitioner(
-      preStateRootProof.stateRoot,
-      transactionProof.transaction
-    )
-
-    if (stateTransitionerAddress !== ZERO_ADDRESS) {
-      return
-    }
-
-    try {
-      await (
-        await this.state.OVM_FraudVerifier.connect(
-          this.options.l1Wallet
-        ).initializeFraudVerification(
-          preStateRootProof.stateRoot,
-          preStateRootProof.stateRootBatchHeader,
-          preStateRootProof.stateRootProof,
-          transactionProof.transaction,
-          transactionProof.transactionChainElement,
-          transactionProof.transactionBatchHeader,
-          transactionProof.transactionProof
-        )
-      ).wait()
-    } catch (err) {
-      await this.state.OVM_FraudVerifier.connect(
-        this.options.l1Wallet
-      ).callStatic.initializeFraudVerification(
-        preStateRootProof.stateRoot,
-        preStateRootProof.stateRootBatchHeader,
-        preStateRootProof.stateRootProof,
-        transactionProof.transaction,
-        transactionProof.transactionChainElement,
-        transactionProof.transactionBatchHeader,
-        transactionProof.transactionProof
-      )
-    }
-  }
-
-  /**
-   * Finalizes the fraud verification process.
-   * @param preStateRootProof Proof data for the pre-state root.
-   * @param postStateRootProof Proof data for the post-state root.
-   * @param transaction Transaction being verified.
-   */
-  private async _finalizeFraudVerification(
-    preStateRootProof: StateRootBatchProof,
-    postStateRootProof: StateRootBatchProof,
-    transaction: OvmTransaction
-  ): Promise<void> {
-    try {
-      await (
-        await this.state.OVM_FraudVerifier.connect(
-          this.options.l1Wallet
-        ).finalizeFraudVerification(
-          preStateRootProof.stateRoot,
-          preStateRootProof.stateRootBatchHeader,
-          preStateRootProof.stateRootProof,
-          hashOvmTransaction(transaction),
-          postStateRootProof.stateRoot,
-          postStateRootProof.stateRootBatchHeader,
-          postStateRootProof.stateRootProof
-        )
-      ).wait()
-    } catch (err) {
-      await this.state.OVM_FraudVerifier.connect(
-        this.options.l1Wallet
-      ).callStatic.finalizeFraudVerification(
-        preStateRootProof.stateRoot,
-        preStateRootProof.stateRootBatchHeader,
-        preStateRootProof.stateRootProof,
-        hashOvmTransaction(transaction),
-        postStateRootProof.stateRoot,
-        postStateRootProof.stateRootBatchHeader,
-        postStateRootProof.stateRootProof
-      )
     }
   }
 }
