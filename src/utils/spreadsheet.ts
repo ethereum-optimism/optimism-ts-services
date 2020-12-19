@@ -1,12 +1,12 @@
-import { GoogleSpreadsheet } from 'google-spreadsheet';
+import { GoogleSpreadsheet } from 'google-spreadsheet'
 
 export default class SpreadSheet {
   public doc
   public sheet
 
   constructor(id) {
-    this.doc = new GoogleSpreadsheet(id);
-    this.sheet = null;
+    this.doc = new GoogleSpreadsheet(id)
+    this.sheet = null
   }
 
   async init(email, privateKey) {

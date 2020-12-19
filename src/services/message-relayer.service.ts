@@ -429,7 +429,7 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
           index: proof.stateRootProof.index,
           siblings: proof.stateRootProof.siblings.join(','),
           stateTrieWitness: proof.stateTrieWitness.toString('hex'),
-          storageTrieWitness: proof.storageTrieWitness.toString('hex')
+          storageTrieWitness: proof.storageTrieWitness.toString('hex'),
         })
         this.logger.info('Submitted relay message to spreadsheet')
       } catch (e) {
@@ -438,7 +438,9 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
       }
     } else {
       try {
-        this.logger.info('Dry-run, checking to make sure proof would succeed...')
+        this.logger.info(
+          'Dry-run, checking to make sure proof would succeed...'
+        )
 
         await this.state.OVM_L1CrossDomainMessenger.connect(
           this.options.l1Wallet
@@ -453,7 +455,9 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
           }
         )
 
-        this.logger.info('Proof should succeed. Submitting for real this time...')
+        this.logger.info(
+          'Proof should succeed. Submitting for real this time...'
+        )
       } catch (err) {
         this.logger.error(
           `Proof would fail, skipping. See error message below:\n\n${err.message}\n`
