@@ -1,7 +1,9 @@
+/* Imports: External */
 import { JsonRpcProvider } from '@ethersproject/providers'
 import { ethers, Event, Contract, BigNumber } from 'ethers'
 import { MerkleTree } from 'merkletreejs'
 
+/* Imports: Internal */
 import {
   StateRootBatchHeader,
   StateRootBatchProof,

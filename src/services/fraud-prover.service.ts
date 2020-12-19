@@ -11,16 +11,12 @@ import {
   StateTransitionPhase,
   FraudProofData,
   OvmTransaction,
-  StateRootBatchProof,
-  TransactionBatchProof,
   AccountStateProof,
   StorageStateProof,
 } from '../types'
 import {
   sleep,
-  ZERO_ADDRESS,
   loadContract,
-  loadContractFromManager,
   L1ProviderWrapper,
   L2ProviderWrapper,
   toHexString,

@@ -1,7 +1,8 @@
-import * as rlp from 'rlp'
-import { BigNumber, Contract, logger } from 'ethers'
+/* Imports: External */
+import { BigNumber, Contract } from 'ethers'
 import { Account, BN } from 'ethereumjs-util'
 
+/* Imports: Internal */
 import { sleep } from './common'
 import { toHexString, fromHexString } from './hex-utils'
 import { JsonRpcProvider } from '@ethersproject/providers'
