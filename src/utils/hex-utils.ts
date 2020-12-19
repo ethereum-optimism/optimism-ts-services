@@ -69,3 +69,7 @@ export const toStrippedHexString = (buf: Buffer | string | number): string => {
     return '0x' + hex
   }
 }
+
+export const asciiToHex = (str: string): string => {
+  return Buffer.from(str, 'ascii').toString('hex')
+}

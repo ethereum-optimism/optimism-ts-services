@@ -31,6 +31,7 @@ import {
   waitForNetwork,
   loadOptimismContracts,
   OptimismContracts,
+  asciiToHex,
 } from '../utils'
 
 interface FraudProverOptions {
@@ -486,7 +487,7 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
           err
             .toString()
             .includes(
-              '46756e6374696f6e206d7573742062652063616c6c656420647572696e672074686520636f72726563742070686173652e'
+              asciiToHex('Function must be called during the correct phase.')
             )
         ) {
           this.logger.interesting(

@@ -4,7 +4,7 @@ import { Account, BN } from 'ethereumjs-util'
 
 /* Imports: Internal */
 import { sleep } from './common'
-import { toHexString, fromHexString } from './hex-utils'
+import { toHexString, fromHexString, asciiToHex } from './hex-utils'
 import { JsonRpcProvider } from '@ethersproject/providers'
 
 export const encodeAccountState = (state: Partial<any>): Buffer => {
@@ -79,7 +79,10 @@ export const smartSendTransaction = async ({
     } catch (err) {
       for (const acceptableError of acceptableErrors) {
         for (const error of acceptableError.errors) {
-          if (err.toString().includes(error)) {
+          if (
+            err.toString().includes(error) ||
+            err.toString().includes(asciiToHex(error))
+          ) {
             if (logger) {
               logger.info(acceptableError.reason)
             }
