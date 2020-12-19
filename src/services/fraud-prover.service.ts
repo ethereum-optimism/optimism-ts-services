@@ -306,7 +306,14 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
             if (
               err
                 .toString()
-                .includes('Function must be called during the correct phase.')
+                .includes(
+                  'Function must be called during the correct phase.'
+                ) ||
+              err
+                .toString()
+                .includes(
+                  '46756e6374696f6e206d7573742062652063616c6c656420647572696e672074686520636f72726563742070686173652e'
+                )
             ) {
               this.logger.interesting(
                 `Phase was completed by someone else, moving on.`
@@ -365,7 +372,14 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
             if (
               err
                 .toString()
-                .includes('Function must be called during the correct phase.')
+                .includes(
+                  'Function must be called during the correct phase.'
+                ) ||
+              err
+                .toString()
+                .includes(
+                  '46756e6374696f6e206d7573742062652063616c6c656420647572696e672074686520636f72726563742070686173652e'
+                )
             ) {
               this.logger.interesting(
                 `Phase was completed by someone else, moving on.`
@@ -398,9 +412,7 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
               err.toString().includes('Index out of bounds.') ||
               err.toString().includes('Reverted 0x')
             ) {
-              this.logger.success(
-                `Fraud proof was finalized by someone else. Congrats!`
-              )
+              this.logger.success(`Fraud proof was finalized by someone else.`)
             } else {
               throw err
             }
@@ -423,30 +435,40 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
    * @return Index of the next fraudulent state root, if any.
    */
   private async _findNextFraudulentStateRoot(): Promise<number | undefined> {
-    while (
-      (await this.state.l1Provider.getStateRootBatchHeader(
-        this.state.nextUnverifiedStateRoot
-      )) !== undefined
-    ) {
-      this.logger.info(
-        `Checking state root for mismatch: ${this.state.nextUnverifiedStateRoot}`
-      )
+    let nextBatchHeader = await this.state.l1Provider.getStateRootBatchHeader(
+      this.state.nextUnverifiedStateRoot
+    )
 
-      const l1StateRoot = await this.state.l1Provider.getStateRoot(
+    while (nextBatchHeader !== undefined) {
+      const nextBatchStateRoots = await this.state.l1Provider.getBatchStateRoots(
         this.state.nextUnverifiedStateRoot
       )
 
-      const l2StateRoot = await this.state.l2Provider.getStateRoot(
-        this.state.nextUnverifiedStateRoot + this.options.l2BlockOffset
-      )
+      for (let i = 0; i < nextBatchHeader.batchSize.toNumber(); i++) {
+        const index = i + nextBatchHeader.prevTotalElements.toNumber()
+        this.logger.info(`Checking state root for mismatch: ${index}`)
 
-      if (l1StateRoot !== l2StateRoot) {
-        this.logger.interesting(`L1 State Root: ${l1StateRoot}`)
-        this.logger.interesting(`L2 State Root: ${l2StateRoot}`)
-        return this.state.nextUnverifiedStateRoot
-      } else {
-        this.state.nextUnverifiedStateRoot += 1
+        const l1StateRoot = nextBatchStateRoots[i]
+        const l2StateRoot = await this.state.l2Provider.getStateRoot(
+          index + this.options.l2BlockOffset
+        )
+
+        if (l1StateRoot !== l2StateRoot) {
+          this.logger.info(`State roots don't match 𐄂`)
+          this.logger.interesting(`L1 State Root: ${l1StateRoot}`)
+          this.logger.interesting(`L2 State Root: ${l2StateRoot}`)
+          return index
+        } else {
+          this.logger.info(`State root was not mismatched ✓`)
+        }
       }
+
+      this.state.nextUnverifiedStateRoot =
+        nextBatchHeader.prevTotalElements.toNumber() +
+        nextBatchHeader.batchSize.toNumber()
+      nextBatchHeader = await this.state.l1Provider.getStateRootBatchHeader(
+        this.state.nextUnverifiedStateRoot
+      )
     }
   }
 

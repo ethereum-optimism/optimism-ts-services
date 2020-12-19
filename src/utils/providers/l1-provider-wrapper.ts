@@ -367,13 +367,13 @@ export class L1ProviderWrapper {
       return
     }
 
-    if (results.length > 1) {
+    if (results.length > 2) {
       throw new Error(
         `Found more than one batch header for the same state root, this shouldn't happen.`
       )
     }
 
-    return results[0]
+    return results[results.length - 1]
   }
 
   private async _getTransactionBatchEvent(
