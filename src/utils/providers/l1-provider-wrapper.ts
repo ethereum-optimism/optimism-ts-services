@@ -136,7 +136,7 @@ export class L1ProviderWrapper {
       if (i < stateRoots.length) {
         elements.push(stateRoots[i])
       } else {
-        elements.push('0x' + '00'.repeat(32))
+        elements.push(ethers.utils.keccak256('0x' + '00'.repeat(32)))
       }
     }
 
@@ -144,8 +144,9 @@ export class L1ProviderWrapper {
       return Buffer.from(ethers.utils.keccak256(el).slice(2), 'hex')
     }
 
+    // State roots aren't hashed since they're already bytes32
     const leaves = elements.map((element) => {
-      return hash(element)
+      return fromHexString(element)
     })
 
     const tree = new MerkleTree(leaves, hash)

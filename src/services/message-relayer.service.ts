@@ -6,18 +6,16 @@ import { MerkleTree } from 'merkletreejs'
 
 /* Imports: Internal */
 import { BaseService } from './base.service'
-import { sleep } from '../utils/common'
 import SpreadSheet from '../utils/spreadsheet'
+
 import {
+  sleep,
   loadContract,
   loadContractFromManager,
   loadProxyFromManager,
-} from '../utils/ovm-contracts'
-import {
-  StateRootBatchHeader,
-  SentMessage,
-  SentMessageProof,
-} from '../types/ovm.types'
+  fromHexString,
+} from '../utils'
+import { StateRootBatchHeader, SentMessage, SentMessageProof } from '../types'
 
 interface MessageRelayerOptions {
   // Providers for interacting with L1 and L2.
@@ -376,7 +374,7 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
       if (i < header.stateRoots.length) {
         elements.push(header.stateRoots[i])
       } else {
-        elements.push('0x' + '00'.repeat(32))
+        elements.push(ethers.utils.keccak256('0x' + '00'.repeat(32)))
       }
     }
 
@@ -385,7 +383,7 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
     }
 
     const leaves = elements.map((element) => {
-      return hash(element)
+      return fromHexString(element)
     })
 
     const tree = new MerkleTree(leaves, hash)
@@ -431,7 +429,7 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
           index: proof.stateRootProof.index,
           siblings: proof.stateRootProof.siblings.join(','),
           stateTrieWitness: proof.stateTrieWitness.toString('hex'),
-          storageTrieWitness: proof.storageTrieWitness.toString('hex')
+          storageTrieWitness: proof.storageTrieWitness.toString('hex'),
         })
         this.logger.info('Submitted relay message to spreadsheet')
       } catch (e) {
@@ -440,7 +438,9 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
       }
     } else {
       try {
-        this.logger.info('Dry-run, checking to make sure proof would succeed...')
+        this.logger.info(
+          'Dry-run, checking to make sure proof would succeed...'
+        )
 
         await this.state.OVM_L1CrossDomainMessenger.connect(
           this.options.l1Wallet
@@ -455,7 +455,9 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
           }
         )
 
-        this.logger.info('Proof should succeed. Submitting for real this time...')
+        this.logger.info(
+          'Proof should succeed. Submitting for real this time...'
+        )
       } catch (err) {
         this.logger.error(
           `Proof would fail, skipping. See error message below:\n\n${err.message}\n`
