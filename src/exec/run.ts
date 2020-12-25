@@ -12,6 +12,7 @@ const ADDRESS_MANAGER_ADDRESS = env.ADDRESS_MANAGER_ADDRESS
 const L1_WALLET_KEY = env.L1_WALLET_KEY
 const RELAY_GAS_LIMIT = env.RELAY_GAS_LIMIT || '4000000'
 const POLLING_INTERVAL = env.POLLING_INTERVAL || '5000'
+const GET_LOGS_INTERVAL = env.GET_LOGS_INTERVAL || '2000'
 const L2_BLOCK_OFFSET = env.L2_BLOCK_OFFSET || '1'
 const L1_START_OFFSET = env.L1_BLOCK_OFFSET || '1'
 const FROM_L2_TRANSACTION_INDEX = env.FROM_L2_TRANSACTION_INDEX || '0'
@@ -67,6 +68,7 @@ const main = async () => {
     pollingInterval: parseInt(POLLING_INTERVAL, 10),
     l2BlockOffset: parseInt(L2_BLOCK_OFFSET, 10),
     l1StartOffset: parseInt(L1_START_OFFSET, 10),
+    getLogsInterval: parseInt(GET_LOGS_INTERVAL, 10),
     spreadsheetMode: !!SPREADSHEET_MODE,
     spreadsheet,
   })

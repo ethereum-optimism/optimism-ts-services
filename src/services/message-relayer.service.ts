@@ -42,7 +42,11 @@ interface MessageRelayerOptions {
   // on L2 after the genesis but before the first state commitment is published.
   l2BlockOffset?: number
 
+  // L1 block to start querying events from. Recommended to set to the StateCommitmentChain deploy height
   l1StartOffset?: number
+
+  // Number of blocks within each getLogs query - max is 2000
+  getLogsInterval?: number
 
   // Append txs to a spreadsheet instead of submitting transactions
   spreadsheetMode?: boolean
@@ -57,6 +61,7 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
     pollingInterval: 5000,
     l2BlockOffset: 1,
     l1StartOffset: 0,
+    getLogsInterval: 2000,
     spreadsheetMode: false,
   }
 
@@ -66,6 +71,7 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
   private state: {
     lastFinalizedTxHeight: number
     nextUnfinalizedTxHeight: number
+    lastQueriedL1Block: number
     Lib_AddressManager: Contract
     OVM_StateCommitmentChain: Contract
     OVM_L1CrossDomainMessenger: Contract
@@ -74,6 +80,9 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
   }
 
   protected async _init(): Promise<void> {
+    this.logger.info(
+      `Initializing message relayer with options: ${this.options}`
+    )
     // Need to improve this, sorry.
     this.state = {} as any
 
@@ -129,6 +138,8 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
     if (this.options.spreadsheetMode) {
       this.logger.info('Running in spreadsheet mode')
     }
+
+    this.state.lastQueriedL1Block = this.options.l1StartOffset
 
     this.state.lastFinalizedTxHeight = this.options.fromL2TransactionIndex || 0
     this.state.nextUnfinalizedTxHeight =
@@ -233,66 +244,67 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
   > {
     const filter = this.state.OVM_StateCommitmentChain.filters.StateBatchAppended()
 
-    let events: ethers.Event[] = []
-    let startingBlock = this.options.l1StartOffset
+    let startingBlock = this.state.lastQueriedL1Block
     while (
       startingBlock < (await this.options.l1RpcProvider.getBlockNumber())
     ) {
-      events = events.concat(
-        await this.state.OVM_StateCommitmentChain.queryFilter(
-          filter,
-          startingBlock,
-          startingBlock + 1000
+      this.state.lastQueriedL1Block = startingBlock
+      this.logger.info(
+        `Querying events from L1 block ${startingBlock} to ${
+          startingBlock + this.options.getLogsInterval
+        }...`
+      )
+      const events: ethers.Event[] = await this.state.OVM_StateCommitmentChain.queryFilter(
+        filter,
+        startingBlock,
+        startingBlock + this.options.getLogsInterval
+      )
+      const event = events.find((event) => {
+        return (
+          event.args._prevTotalElements.toNumber() <= height &&
+          event.args._prevTotalElements.toNumber() +
+            event.args._batchSize.toNumber() >
+            height
         )
-      )
+      })
+      if (event) {
+        const transaction = await this.options.l1RpcProvider.getTransaction(
+          event.transactionHash
+        )
+        const [
+          stateRoots,
+        ] = this.state.OVM_StateCommitmentChain.interface.decodeFunctionData(
+          'appendStateBatch',
+          transaction.data
+        )
 
-      startingBlock += 1000
+        return {
+          batch: {
+            batchIndex: event.args._batchIndex,
+            batchRoot: event.args._batchRoot,
+            batchSize: event.args._batchSize,
+            prevTotalElements: event.args._prevTotalElements,
+            extraData: event.args._extraData,
+          },
+          stateRoots: stateRoots,
+        }
+      }
+      startingBlock += this.options.getLogsInterval
     }
-
-    if (events.length === 0) {
-      return
-    }
-
-    const event = events.find((event) => {
-      return (
-        event.args._prevTotalElements.toNumber() <= height &&
-        event.args._prevTotalElements.toNumber() +
-          event.args._batchSize.toNumber() >
-          height
-      )
-    })
-
-    if (!event) {
-      return
-    }
-
-    const transaction = await this.options.l1RpcProvider.getTransaction(
-      event.transactionHash
-    )
-    const [
-      stateRoots,
-    ] = this.state.OVM_StateCommitmentChain.interface.decodeFunctionData(
-      'appendStateBatch',
-      transaction.data
-    )
-
-    return {
-      batch: {
-        batchIndex: event.args._batchIndex,
-        batchRoot: event.args._batchRoot,
-        batchSize: event.args._batchSize,
-        prevTotalElements: event.args._prevTotalElements,
-        extraData: event.args._extraData,
-      },
-      stateRoots: stateRoots,
-    }
+    return
   }
 
   private async _isTransactionFinalized(height: number): Promise<boolean> {
+    this.logger.info(`Checking if tx is finalized at height: ${height}`)
     const header = await this._getStateBatchHeader(height)
 
     if (header === undefined) {
+      this.logger.info(`No state batch header found.`)
       return false
+    } else {
+      this.logger.info(
+        `Got state batch header: ${JSON.stringify(header, null, 2)}`
+      )
     }
 
     return !(await this.state.OVM_StateCommitmentChain.insideFraudProofWindow(
