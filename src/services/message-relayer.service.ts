@@ -75,7 +75,9 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
   }
 
   protected async _init(): Promise<void> {
-    this.logger.info(`initializing message relater with options: ${this.options}`)
+    this.logger.info(
+      `Initializing message relater with options: ${this.options}`
+    )
     // Need to improve this, sorry.
     this.state = {} as any
 
@@ -242,7 +244,11 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
       startingBlock < (await this.options.l1RpcProvider.getBlockNumber())
     ) {
       this.state.lastQueriedL1Block = startingBlock
-      this.logger.info(`Querying events from L1 block ${startingBlock} to ${startingBlock+2000}...`)
+      this.logger.info(
+        `Querying events from L1 block ${startingBlock} to ${
+          startingBlock + 2000
+        }...`
+      )
       const events: ethers.Event[] = await this.state.OVM_StateCommitmentChain.queryFilter(
         filter,
         startingBlock,
@@ -291,7 +297,9 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
       this.logger.info(`No state batch header found.`)
       return false
     } else {
-      this.logger.info(`Got state batch header: ${JSON.stringify(header, null, 2)}`)
+      this.logger.info(
+        `Got state batch header: ${JSON.stringify(header, null, 2)}`
+      )
     }
 
     return !(await this.state.OVM_StateCommitmentChain.insideFraudProofWindow(
