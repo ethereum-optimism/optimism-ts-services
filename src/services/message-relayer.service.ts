@@ -66,6 +66,7 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
   private state: {
     lastFinalizedTxHeight: number
     nextUnfinalizedTxHeight: number
+    lastQueriedL1Block: number
     Lib_AddressManager: Contract
     OVM_StateCommitmentChain: Contract
     OVM_L1CrossDomainMessenger: Contract
@@ -130,6 +131,8 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
     if (this.options.spreadsheetMode) {
       this.logger.info('Running in spreadsheet mode')
     }
+
+    this.state.lastQueriedL1Block = this.options.l1StartOffset
 
     this.state.lastFinalizedTxHeight = this.options.fromL2TransactionIndex || 0
     this.state.nextUnfinalizedTxHeight =
@@ -234,15 +237,16 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
   > {
     const filter = this.state.OVM_StateCommitmentChain.filters.StateBatchAppended()
 
-    let startingBlock = this.options.l1StartOffset
+    let startingBlock = this.state.lastQueriedL1Block
     while (
       startingBlock < (await this.options.l1RpcProvider.getBlockNumber())
     ) {
-      this.logger.info(`querying events from ${startingBlock} to ${startingBlock+1000}`)
+      this.state.lastQueriedL1Block = startingBlock
+      this.logger.info(`Querying events from L1 block ${startingBlock} to ${startingBlock+2000}...`)
       const events: ethers.Event[] = await this.state.OVM_StateCommitmentChain.queryFilter(
         filter,
         startingBlock,
-        startingBlock + 1000
+        startingBlock + 2000
       )
       const event = events.find((event) => {
         return (
@@ -280,12 +284,14 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
   }
 
   private async _isTransactionFinalized(height: number): Promise<boolean> {
-    this.logger.info(`checking if tx is finalized at height: ${height}`)
+    this.logger.info(`Checking if tx is finalized at height: ${height}`)
     const header = await this._getStateBatchHeader(height)
-    this.logger.info(`got state batch header: ${header}`)
-    
+
     if (header === undefined) {
+      this.logger.info(`No state batch header found.`)
       return false
+    } else {
+      this.logger.info(`Got state batch header: ${JSON.stringify(header, null, 2)}`)
     }
 
     return !(await this.state.OVM_StateCommitmentChain.insideFraudProofWindow(
