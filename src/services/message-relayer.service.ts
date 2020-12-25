@@ -42,7 +42,11 @@ interface MessageRelayerOptions {
   // on L2 after the genesis but before the first state commitment is published.
   l2BlockOffset?: number
 
+  // L1 block to start querying events from. Recommended to set to the StateCommitmentChain deploy height
   l1StartOffset?: number
+
+  // Number of blocks within each getLogs query - max is 2000
+  getLogsInterval?: number
 
   // Append txs to a spreadsheet instead of submitting transactions
   spreadsheetMode?: boolean
@@ -57,6 +61,7 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
     pollingInterval: 5000,
     l2BlockOffset: 1,
     l1StartOffset: 0,
+    getLogsInterval: 2000,
     spreadsheetMode: false,
   }
 
@@ -246,13 +251,13 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
       this.state.lastQueriedL1Block = startingBlock
       this.logger.info(
         `Querying events from L1 block ${startingBlock} to ${
-          startingBlock + 2000
+          startingBlock + this.options.getLogsInterval
         }...`
       )
       const events: ethers.Event[] = await this.state.OVM_StateCommitmentChain.queryFilter(
         filter,
         startingBlock,
-        startingBlock + 2000
+        startingBlock + this.options.getLogsInterval
       )
       const event = events.find((event) => {
         return (
@@ -284,7 +289,7 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
           stateRoots: stateRoots,
         }
       }
-      startingBlock += 1000
+      startingBlock += this.options.getLogsInterval
     }
     return
   }
