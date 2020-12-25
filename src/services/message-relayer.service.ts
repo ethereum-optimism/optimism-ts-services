@@ -74,6 +74,7 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
   }
 
   protected async _init(): Promise<void> {
+    this.logger.info(`initializing message relater with options: ${this.options}`)
     // Need to improve this, sorry.
     this.state = {} as any
 
@@ -233,64 +234,56 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
   > {
     const filter = this.state.OVM_StateCommitmentChain.filters.StateBatchAppended()
 
-    let events: ethers.Event[] = []
     let startingBlock = this.options.l1StartOffset
     while (
       startingBlock < (await this.options.l1RpcProvider.getBlockNumber())
     ) {
-      events = events.concat(
-        await this.state.OVM_StateCommitmentChain.queryFilter(
-          filter,
-          startingBlock,
-          startingBlock + 1000
-        )
+      this.logger.info(`querying events from ${startingBlock} to ${startingBlock+1000}`)
+      const events: ethers.Event[] = await this.state.OVM_StateCommitmentChain.queryFilter(
+        filter,
+        startingBlock,
+        startingBlock + 1000
       )
+      const event = events.find((event) => {
+        return (
+          event.args._prevTotalElements.toNumber() <= height &&
+          event.args._prevTotalElements.toNumber() +
+            event.args._batchSize.toNumber() >
+            height
+        )
+      })
+      if (event) {
+        const transaction = await this.options.l1RpcProvider.getTransaction(
+          event.transactionHash
+        )
+        const [
+          stateRoots,
+        ] = this.state.OVM_StateCommitmentChain.interface.decodeFunctionData(
+          'appendStateBatch',
+          transaction.data
+        )
 
+        return {
+          batch: {
+            batchIndex: event.args._batchIndex,
+            batchRoot: event.args._batchRoot,
+            batchSize: event.args._batchSize,
+            prevTotalElements: event.args._prevTotalElements,
+            extraData: event.args._extraData,
+          },
+          stateRoots: stateRoots,
+        }
+      }
       startingBlock += 1000
     }
-
-    if (events.length === 0) {
-      return
-    }
-
-    const event = events.find((event) => {
-      return (
-        event.args._prevTotalElements.toNumber() <= height &&
-        event.args._prevTotalElements.toNumber() +
-          event.args._batchSize.toNumber() >
-          height
-      )
-    })
-
-    if (!event) {
-      return
-    }
-
-    const transaction = await this.options.l1RpcProvider.getTransaction(
-      event.transactionHash
-    )
-    const [
-      stateRoots,
-    ] = this.state.OVM_StateCommitmentChain.interface.decodeFunctionData(
-      'appendStateBatch',
-      transaction.data
-    )
-
-    return {
-      batch: {
-        batchIndex: event.args._batchIndex,
-        batchRoot: event.args._batchRoot,
-        batchSize: event.args._batchSize,
-        prevTotalElements: event.args._prevTotalElements,
-        extraData: event.args._extraData,
-      },
-      stateRoots: stateRoots,
-    }
+    return
   }
 
   private async _isTransactionFinalized(height: number): Promise<boolean> {
+    this.logger.info(`checking if tx is finalized at height: ${height}`)
     const header = await this._getStateBatchHeader(height)
-
+    this.logger.info(`got state batch header: ${header}`)
+    
     if (header === undefined) {
       return false
     }
