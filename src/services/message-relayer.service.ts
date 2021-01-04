@@ -259,6 +259,7 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
         startingBlock,
         startingBlock + this.options.getLogsInterval
       )
+      // tslint:disable-next-line
       const event = events.find((event) => {
         return (
           event.args._prevTotalElements.toNumber() <= height &&
@@ -286,7 +287,7 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
             prevTotalElements: event.args._prevTotalElements,
             extraData: event.args._extraData,
           },
-          stateRoots: stateRoots,
+          stateRoots,
         }
       }
       startingBlock += this.options.getLogsInterval
@@ -409,7 +410,7 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
       stateRoot: header.stateRoots[index],
       stateRootBatchHeader: header.batch,
       stateRootProof: {
-        index: index,
+        index,
         siblings: treeProof,
       },
       stateTrieWitness: rlp.encode(proof.accountProof),

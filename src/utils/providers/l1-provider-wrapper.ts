@@ -188,10 +188,10 @@ export class L1ProviderWrapper {
   public async getBatchTransactions(
     index: number
   ): Promise<
-    Array<{
+    {
       transaction: OvmTransaction
       transactionChainElement: TransactionChainElement
-    }>
+    }[]
   > {
     const event = await this._getTransactionBatchEvent(index)
 
@@ -388,6 +388,7 @@ export class L1ProviderWrapper {
       return
     }
 
+    // tslint:disable-next-line
     const event = events.find((event) => {
       return (
         event.args._prevTotalElements.toNumber() <= index &&
@@ -409,6 +410,7 @@ export class L1ProviderWrapper {
     if (batchSubmissionEvents.length === 0) {
       ;(event as any).isSequencerBatch = false
     } else {
+      // tslint:disable-next-line
       const batchSubmissionEvent = batchSubmissionEvents.find((event) => {
         return (
           event.args._startingQueueIndex.toNumber() <= index &&
