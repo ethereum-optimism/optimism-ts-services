@@ -10,7 +10,7 @@ on:
 
 jobs:
   build-test-lint:
-    name: Run batch-submitter Test Suite on Node ${{matrix.node}}
+    name: Run Test Suite on Node ${{matrix.node}}
     runs-on: ubuntu-latest
 
     strategy:
@@ -26,19 +26,12 @@ jobs:
           node-version: ${{ matrix.node }}
 
       # START DEPENDENCY CACHING
-      - name: Cache root deps
+      - name: Cache  deps
         uses: actions/cache@v1
         id: cache_base
         with:
           path: node_modules
           key: ${{ runner.os }}-${{ matrix.node }}-${{ hashFiles('package.json') }}
-
-      - name: Cache batch-submitter deps
-        uses: actions/cache@v1
-        id: cache_batch-submitter
-        with:
-          path: packages/batch-submitter/node_modules
-          key: ${{ runner.os }}-${{ matrix.node }}-${{ hashFiles('packages/batch-submitter/package.json') }}
 
       # END DEPENDENCY CACHING
       - name: Install Dependencies
