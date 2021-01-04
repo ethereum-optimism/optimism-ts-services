@@ -1,6 +1,21 @@
 # optimism-ts-services
 [Optimism] Client-Side Services
 
+## Fraud Prover
+
+| Environment Variable        | Description            |
+| -----------                 | -----------            |
+| `L2_NODE_WEB3_URL`          | Verifier HTTP Endpoint |
+| `L1_NODE_WEB3_URL`          | L1 HTTP Endpoint       |
+| `L1_WALLET_KEY`             | L1 Private Key         |
+| `RELAY_GAS_LIMIT`           | |
+| `RUN_GAS_LIMIT`             | |
+| `POLLING_INTERVAL`          | |
+| `L2_BLOCK_OFFSET`           | |
+| `L1_START_OFFSET`           | |
+| `L1_BLOCK_FINALITY`         | |
+| `FROM_L2_TRANSACTION_INDEX` | |
+
 ## Message Passer
 
 The Message Passer is used to confirm L2 to L1 messages on L1.
