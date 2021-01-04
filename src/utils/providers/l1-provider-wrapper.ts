@@ -1,7 +1,9 @@
+/* Imports: External */
 import { JsonRpcProvider } from '@ethersproject/providers'
 import { ethers, Event, Contract, BigNumber } from 'ethers'
 import { MerkleTree } from 'merkletreejs'
 
+/* Imports: Internal */
 import {
   StateRootBatchHeader,
   StateRootBatchProof,
@@ -365,12 +367,6 @@ export class L1ProviderWrapper {
 
     if (results.length === 0) {
       return
-    }
-
-    if (results.length > 2) {
-      throw new Error(
-        `Found more than one batch header for the same state root, this shouldn't happen.`
-      )
     }
 
     return results[results.length - 1]

@@ -1,3 +1,4 @@
+/* Imports: External */
 import { BigNumber } from 'ethers'
 
 export const fromHexString = (buf: Buffer | string): Buffer => {
@@ -67,4 +68,8 @@ export const toStrippedHexString = (buf: Buffer | string | number): string => {
   } else {
     return '0x' + hex
   }
+}
+
+export const asciiToHex = (str: string): string => {
+  return Buffer.from(str, 'ascii').toString('hex')
 }
