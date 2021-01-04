@@ -12,6 +12,7 @@ export const makeTrieFromProofs = (proofs: string[][]): Promise<BaseTrie> => {
   }
 
   const nodes = proofs.reduce(
+    // tslint:disable-next-line
     (nodes, proof) => {
       if (proof.length > 1) {
         return nodes.concat(proof.slice(1))

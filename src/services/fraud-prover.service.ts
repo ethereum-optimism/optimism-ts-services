@@ -583,7 +583,7 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
   ): Promise<{
     [address: string]: BaseTrie
   }> {
-    let accountTries: { [address: string]: BaseTrie } = {}
+    const accountTries: { [address: string]: BaseTrie } = {}
 
     for (const accountStateProof of proof.accountStateProofs) {
       accountTries[accountStateProof.address] = await makeTrieFromProofs(
@@ -803,16 +803,14 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
       // here doesn't matter because the trie will still end up with the same root. We can also
       // repeatedly update a key with the same value since it won't have an impact on the trie.
       for (const account of committedAccounts) {
-        const updatedAccountState = await OVM_StateManager.getAccount(
-          account.address
-        )
+        const accountState = await OVM_StateManager.getAccount(account.address)
 
         await stateTrie.put(
           fromHexString(ethers.utils.keccak256(account.address)),
           encodeAccountState({
-            ...updatedAccountState,
+            ...accountState,
             ...{
-              nonce: updatedAccountState.nonce.toNumber(),
+              nonce: accountState.nonce.toNumber(),
             },
           })
         )

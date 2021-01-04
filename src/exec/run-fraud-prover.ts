@@ -2,6 +2,7 @@ import { Wallet } from 'ethers'
 import { JsonRpcProvider } from '@ethersproject/providers'
 import { FraudProverService } from '../services/fraud-prover.service'
 
+// tslint:disable-next-line
 require('dotenv').config()
 
 const env = process.env
