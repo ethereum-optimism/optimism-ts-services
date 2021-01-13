@@ -72,6 +72,7 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
     lastFinalizedTxHeight: number
     nextUnfinalizedTxHeight: number
     lastQueriedL1Block: number
+    eventCache: ethers.Event[]
     Lib_AddressManager: Contract
     OVM_StateCommitmentChain: Contract
     OVM_L1CrossDomainMessenger: Contract
@@ -140,6 +141,7 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
     }
 
     this.state.lastQueriedL1Block = this.options.l1StartOffset
+    this.state.eventCache = []
 
     this.state.lastFinalizedTxHeight = this.options.fromL2TransactionIndex || 0
     this.state.nextUnfinalizedTxHeight =
@@ -259,39 +261,44 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
         startingBlock,
         startingBlock + this.options.getLogsInterval
       )
-      // tslint:disable-next-line
-      const event = events.find((event) => {
-        return (
-          event.args._prevTotalElements.toNumber() <= height &&
-          event.args._prevTotalElements.toNumber() +
-            event.args._batchSize.toNumber() >
-            height
-        )
-      })
-      if (event) {
-        const transaction = await this.options.l1RpcProvider.getTransaction(
-          event.transactionHash
-        )
-        const [
-          stateRoots,
-        ] = this.state.OVM_StateCommitmentChain.interface.decodeFunctionData(
-          'appendStateBatch',
-          transaction.data
-        )
 
-        return {
-          batch: {
-            batchIndex: event.args._batchIndex,
-            batchRoot: event.args._batchRoot,
-            batchSize: event.args._batchSize,
-            prevTotalElements: event.args._prevTotalElements,
-            extraData: event.args._extraData,
-          },
-          stateRoots,
-        }
-      }
+      this.state.eventCache = this.state.eventCache.concat(events)
       startingBlock += this.options.getLogsInterval
     }
+
+    // tslint:disable-next-line
+    const event = this.state.eventCache.find((event) => {
+      return (
+        event.args._prevTotalElements.toNumber() <= height &&
+        event.args._prevTotalElements.toNumber() +
+          event.args._batchSize.toNumber() >
+          height
+      )
+    })
+
+    if (event) {
+      const transaction = await this.options.l1RpcProvider.getTransaction(
+        event.transactionHash
+      )
+      const [
+        stateRoots,
+      ] = this.state.OVM_StateCommitmentChain.interface.decodeFunctionData(
+        'appendStateBatch',
+        transaction.data
+      )
+
+      return {
+        batch: {
+          batchIndex: event.args._batchIndex,
+          batchRoot: event.args._batchRoot,
+          batchSize: event.args._batchSize,
+          prevTotalElements: event.args._prevTotalElements,
+          extraData: event.args._extraData,
+        },
+        stateRoots,
+      }
+    }
+
     return
   }
 
