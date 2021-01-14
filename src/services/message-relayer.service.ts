@@ -87,6 +87,9 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
     // Need to improve this, sorry.
     this.state = {} as any
 
+    const address = await this.options.l1Wallet.getAddress()
+    this.logger.info(`Using L1 EOA: ${address}`)
+
     this.state.Lib_AddressManager = loadContract(
       'Lib_AddressManager',
       this.options.addressManagerAddress,
