@@ -73,6 +73,9 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
     // Need to improve this, sorry.
     this.state = {} as any
 
+    const address = await this.options.l1Wallet.getAddress()
+    this.logger.info(`Using L1 EOA: ${address}`)
+
     this.logger.info(`Trying to connect to the L1 network...`)
     for (let i = 0; i < 10; i++) {
       try {
