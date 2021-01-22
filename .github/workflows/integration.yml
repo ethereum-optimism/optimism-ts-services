@@ -36,6 +36,6 @@ jobs:
         run: |
           cd $HOME/optimism-integration
           FRAUD_PROVER_TAG=$GITHUB_HEAD_REF \
-          MESSAGE_PASSER_TAG=$GITHUB_HEAD_REF \
+          MESSAGE_RELAYER_TAG=$GITHUB_HEAD_REF \
               ./test.sh
 
