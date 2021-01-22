@@ -1,5 +1,6 @@
 /* Imports: External */
 import { Contract, ethers, Wallet, BigNumber } from 'ethers'
+import { LedgerSigner } from '@ethersproject/hardware-wallets'
 import { JsonRpcProvider } from '@ethersproject/providers'
 import * as rlp from 'rlp'
 import { MerkleTree } from 'merkletreejs'
@@ -27,7 +28,7 @@ interface MessageRelayerOptions {
   addressManagerAddress: string
 
   // Wallet instance, used to sign and send the L1 relay transactions.
-  l1Wallet: Wallet
+  l1Wallet: Wallet | LedgerSigner
 
   // Max gas to relay messages with.
   relayGasLimit: number

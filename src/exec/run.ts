@@ -1,5 +1,6 @@
 import { Wallet } from 'ethers'
 import { JsonRpcProvider } from '@ethersproject/providers'
+import { LedgerSigner } from '@ethersproject/hardware-wallets'
 import { MessageRelayerService } from '../services/message-relayer.service'
 import SpreadSheet from '../utils/spreadsheet'
 import { config } from 'dotenv'
@@ -18,6 +19,7 @@ const GET_LOGS_INTERVAL = env.GET_LOGS_INTERVAL || '2000'
 const L2_BLOCK_OFFSET = env.L2_BLOCK_OFFSET || '1'
 const L1_START_OFFSET = env.L1_BLOCK_OFFSET || '1'
 const FROM_L2_TRANSACTION_INDEX = env.FROM_L2_TRANSACTION_INDEX || '0'
+const USE_LEDGER = env.USE_LEDGER
 
 // Spreadsheet configuration
 const SPREADSHEET_MODE = env.SPREADSHEET_MODE || ''
@@ -42,8 +44,10 @@ const main = async () => {
   const l2Provider = new JsonRpcProvider(L2_NODE_WEB3_URL)
   const l1Provider = new JsonRpcProvider(L1_NODE_WEB3_URL)
 
-  let wallet: Wallet
-  if (L1_WALLET_KEY) {
+  let wallet: Wallet | LedgerSigner
+  if (USE_LEDGER) {
+    wallet = new LedgerSigner(l1Provider, 'default', HD_PATH)
+  } else if (L1_WALLET_KEY) {
     wallet = new Wallet(L1_WALLET_KEY, l1Provider)
   } else if (MNEMONIC) {
     wallet = Wallet.fromMnemonic(MNEMONIC, HD_PATH)
