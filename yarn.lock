@@ -35,6 +35,11 @@
     ethers "5.0.0"
     ganache-core "^2.12.1"
 
+"@eth-optimism/dev@^1.0.0":
+  version "1.0.0"
+  resolved "https://registry.yarnpkg.com/@eth-optimism/dev/-/dev-1.0.0.tgz#6a8ba479abe9a87fc689ba7bc6d23365f90b3a00"
+  integrity sha512-btafO+VcHrWND3giztLo08LAaVx7k9UIODU0NEgw6NR2XvSZpcTbXf0xb4RDCMxwpmkbZc5gpyHrP72Uk9xSxw==
+
 "@eth-optimism/solc@^0.6.12-alpha.1":
   version "0.6.12-alpha.1"
   resolved "https://registry.yarnpkg.com/@eth-optimism/solc/-/solc-0.6.12-alpha.1.tgz#041876f83b34c6afe2f19dfe9626568df6ed8590"
