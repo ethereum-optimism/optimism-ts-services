@@ -1,35 +1,51 @@
-name: Create Releases on Tags
+name: Auto tag-release-publish
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - master
 
 jobs:
-  release:
+  tag:
+    name: Create tag for new version
     runs-on: ubuntu-latest
+    outputs:
+      tag_name: ${{ steps.create_new_tag.outputs.tag }}
     steps:
-      - name: Create GitHub release
-        uses: Roang-zero1/github-create-release-action@master
+      - uses: actions/checkout@v2
         with:
-          version_regex: ^v[[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+
-          changelog_file: CHANGELOG.md
+          fetch-depth: 2
+      - uses: salsify/action-detect-and-tag-new-version@v2
+        id: create_new_tag
+
+  release:
+    name: Create release
+    runs-on: ubuntu-latest
+    needs: tag
+    if: needs.tag.outputs.tag_name
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/create-release@v1
+        id: create_release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ needs.tag.outputs.tag_name }}
+          release_name: ${{ needs.tag.outputs.tag_name }}
+          draft: false
+          prerelease: false
 
   docker:
     name: Build & Push to DockerHub
     runs-on: ubuntu-latest
+    needs: tag
+    if: needs.tag.outputs.tag_name
 
     steps:
       - uses: actions/checkout@v2
 
       - name: Login to DockerHub Registry
         run: echo ${{ secrets.DOCKERHUB_ACCESS_TOKEN_SECRET }} | docker login -u ${{ secrets.DOCKERHUB_ACCESS_TOKEN_USERNAME}} --password-stdin
-
-      - name: Get the version
-        id: get_version
-        run: echo ::set-output name=VERSION::$(echo $GITHUB_REF | cut -d / -f 3)
 
       - name: Clone the docker repo
         run: |
@@ -39,13 +55,13 @@ jobs:
       - name: Build and push Message Relayer image to DockerHub
         run: |
           cd $HOME/docker
-          ./build.sh -s message-relayer -b ${{ steps.get_version.outputs.VERSION }}
-          docker push ethereumoptimism/message-relayer:${{ steps.get_version.outputs.VERSION }}
+          ./build.sh -s message-relayer -b ${{ needs.tag.outputs.tag_name }}
+          docker push ethereumoptimism/message-relayer:${{ needs.tag.outputs.tag_name }}
 
       - name: Build and push Fraud Prover image to DockerHub
         run: |
           cd $HOME/docker
-          ./build.sh -s fraud-prover -b ${{ steps.get_version.outputs.VERSION }}
-          docker push ethereumoptimism/fraud-prover:${{ steps.get_version.outputs.VERSION }}
+          ./build.sh -s fraud-prover -b ${{ needs.tag.outputs.tag_name }}
+          docker push ethereumoptimism/fraud-prover:${{ needs.tag.outputs.tag_name }}
       - name: Logout of DockerHub
         run: docker logout
