@@ -13,7 +13,7 @@
 | `POLLING_INTERVAL`          | No        | 5,000                 | Time (in milliseconds) to wait while polling for new transactions. |
 | `L2_BLOCK_OFFSET`           | No        | 1                     | Offset between the `CanonicalTransactionChain` contract on Layer 1 and the blocks on Layer 2. Currently defaults to 1, but will likely be removed as soon as possible. |
 | `L1_BLOCK_FINALITY`         | No        | 0                     | Number of Layer 1 blocks to wait before considering a given event. |
-| `L1_START_OFFSET`           | No        | 0                     | Layer 1 block number to start scanning for transactions from. |
+| `L1_BLOCK_OFFSET`           | No        | 0                     | Layer 1 block number to start scanning for transactions from. |
 | `FROM_L2_TRANSACTION_INDEX` | No        | 0                     | Layer 2 block number to start scanning for transactions from. |
 
 ## Message Passer
