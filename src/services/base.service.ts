@@ -1,5 +1,5 @@
 /* Imports: Internal */
-import { Logger } from '../utils/logger'
+import { Logger } from '@eth-optimism/core-utils'
 
 /**
  * Base for other "Service" objects. Handles your standard initialization process, can dynamically
