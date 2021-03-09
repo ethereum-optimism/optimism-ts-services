@@ -74,21 +74,19 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
     this.state = {} as any
 
     const address = await this.options.l1Wallet.getAddress()
-    this.logger.info(`Using L1 EOA: ${address}`)
+    this.logger.info('Using L1 EOA', { address })
 
-    this.logger.info(`Trying to connect to the L1 network...`)
+    this.logger.info('Trying to connect to the L1 network...')
     for (let i = 0; i < 10; i++) {
       try {
         await this.options.l1RpcProvider.detectNetwork()
-        this.logger.info(`Successfully connected to the L1 network.`)
+        this.logger.info('Successfully connected to the L1 network.')
         break
       } catch (err) {
         if (i < 9) {
-          this.logger.info(
-            `Unable to connect to L1 network, will try ${
-              10 - i
-            } more time(s)...`
-          )
+          this.logger.info('Unable to connect to L1 network', {
+            retryAttemptsRemaining: 10 - i,
+          })
           await sleep(1000)
         } else {
           throw new Error(
@@ -98,19 +96,17 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
       }
     }
 
-    this.logger.info(`Trying to connect to the L2 network...`)
+    this.logger.info('Trying to connect to the L2 network...')
     for (let i = 0; i < 10; i++) {
       try {
         await this.options.l2RpcProvider.detectNetwork()
-        this.logger.info(`Successfully connected to the L2 network.`)
+        this.logger.info('Successfully connected to the L2 network.')
         break
       } catch (err) {
         if (i < 9) {
-          this.logger.info(
-            `Unable to connect to L2 network, will try ${
-              10 - i
-            } more time(s)...`
-          )
+          this.logger.info('Unable to connect to L1 network', {
+            retryAttemptsRemaining: 10 - i,
+          })
           await sleep(1000)
         } else {
           throw new Error(
@@ -122,16 +118,16 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
 
     this.state.l2Provider = new L2ProviderWrapper(this.options.l2RpcProvider)
 
-    this.logger.info(`Connecting to Lib_AddressManager...`)
+    this.logger.info('Connecting to Lib_AddressManager...')
     const addressManagerAddress = await this.state.l2Provider.getAddressManagerAddress()
     this.state.Lib_AddressManager = loadContract(
       'Lib_AddressManager',
       addressManagerAddress,
       this.options.l1RpcProvider
     )
-    this.logger.info(
-      `Connected to Lib_AddressManager at address: ${this.state.Lib_AddressManager.address}`
-    )
+    this.logger.info('Connected to Lib_AddressManager', {
+      address: this.state.Lib_AddressManager.address,
+    })
 
     this.logger.info('Connecting to OVM_StateCommitmentChain...')
     this.state.OVM_StateCommitmentChain = await loadContractFromManager(
@@ -139,9 +135,9 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
       this.state.Lib_AddressManager,
       this.options.l1RpcProvider
     )
-    this.logger.info(
-      `Connected to OVM_StateCommitmentChain at address: ${this.state.OVM_StateCommitmentChain.address}`
-    )
+    this.logger.info('Connected to OVM_StateCommitmentChain', {
+      address: this.state.OVM_StateCommitmentChain.address,
+    })
 
     this.logger.info('Connecting to OVM_CanonicalTransactionChain...')
     this.state.OVM_CanonicalTransactionChain = await loadContractFromManager(
@@ -149,9 +145,9 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
       this.state.Lib_AddressManager,
       this.options.l1RpcProvider
     )
-    this.logger.info(
-      `Connected to OVM_CanonicalTransactionChain at address: ${this.state.OVM_CanonicalTransactionChain.address}`
-    )
+    this.logger.info('Connected to OVM_CanonicalTransactionChain', {
+      address: this.state.OVM_CanonicalTransactionChain.address,
+    })
 
     this.logger.info('Connecting to OVM_FraudVerifier...')
     this.state.OVM_FraudVerifier = await loadContractFromManager(
@@ -159,9 +155,9 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
       this.state.Lib_AddressManager,
       this.options.l1RpcProvider
     )
-    this.logger.info(
-      `Connected to OVM_FraudVerifier at address: ${this.state.OVM_FraudVerifier.address}`
-    )
+    this.logger.info('Connected to OVM_FraudVerifier', {
+      address: this.state.OVM_FraudVerifier.address,
+    })
 
     this.logger.info('Connecting to OVM_ExecutionManager...')
     this.state.OVM_ExecutionManager = await loadContractFromManager(
@@ -169,11 +165,11 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
       this.state.Lib_AddressManager,
       this.options.l1RpcProvider
     )
-    this.logger.info(
-      `Connected to OVM_ExecutionManager at address: ${this.state.OVM_ExecutionManager.address}`
-    )
+    this.logger.info('Connected to OVM_ExecutionManager', {
+      address: this.state.OVM_ExecutionManager.address,
+    })
 
-    this.logger.success('Connected to all contracts.')
+    this.logger.info('Connected to all contracts.')
 
     this.state.l1Provider = new L1ProviderWrapper(
       this.options.l1RpcProvider,
@@ -185,15 +181,15 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
     )
 
     this.logger.info(
-      `Caching events for relevant contracts, this might take a while...`
+      'Caching events for relevant contracts, this might take a while...'
     )
-    this.logger.info(`Caching events for OVM_StateCommitmentChain...`)
+    this.logger.info('Caching events for OVM_StateCommitmentChain...')
     await this.state.l1Provider.findAllEvents(
       this.state.OVM_StateCommitmentChain,
       this.state.OVM_StateCommitmentChain.filters.StateBatchAppended()
     )
 
-    this.logger.info(`Caching events for OVM_CanonicalTransactionChain...`)
+    this.logger.info('Caching events for OVM_CanonicalTransactionChain...')
     await this.state.l1Provider.findAllEvents(
       this.state.OVM_CanonicalTransactionChain,
       this.state.OVM_CanonicalTransactionChain.filters.TransactionBatchAppended()
@@ -203,7 +199,7 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
       this.state.OVM_CanonicalTransactionChain.filters.SequencerBatchAppended()
     )
 
-    this.logger.success(`Finished caching events!`)
+    this.logger.info('Finished caching events!')
 
     this.state.nextUnverifiedStateRoot =
       this.options.fromL2TransactionIndex || 0
@@ -214,26 +210,24 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
       await sleep(this.options.pollingInterval)
 
       try {
-        this.logger.info(`Looking for mismatched state roots...`)
+        this.logger.info('Looking for mismatched state roots...')
         const fraudulentStateRootIndex = await this._findNextFraudulentStateRoot()
 
         if (fraudulentStateRootIndex === undefined) {
-          this.logger.info(
-            `Didn't find any mismatched state roots. Trying again in ${Math.floor(
-              this.options.pollingInterval / 1000
-            )} seconds...`
-          )
+          this.logger.info('Did not find any mismatched state roots', {
+            nextAttemptInS: this.options.pollingInterval / 1000,
+          })
           continue
         }
 
-        this.logger.interesting(
-          `Found a mismatched state root at index: ${fraudulentStateRootIndex}`
-        )
+        this.logger.info('Found a mismatched state root', {
+          index: fraudulentStateRootIndex,
+        })
 
-        this.logger.info(`Pulling fraud proof data...`)
+        this.logger.info('Pulling fraud proof data...')
         const proof = await this._getFraudProofData(fraudulentStateRootIndex)
 
-        this.logger.info(`Initializing the fraud verification process...`)
+        this.logger.info('Initializing the fraud verification process...')
         try {
           await this._initializeFraudVerification(
             proof.preStateRootProof,
@@ -241,15 +235,15 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
           )
         } catch (err) {
           if (err.toString().includes('Reverted 0x')) {
-            this.logger.interesting(
-              `Fraud proof was initialized by someone else, moving on...`
+            this.logger.info(
+              'Fraud proof was initialized by someone else, moving on...'
             )
           } else {
             throw err
           }
         }
 
-        this.logger.info(`Loading fraud proof contracts...`)
+        this.logger.info('Loading fraud proof contracts...')
         const {
           OVM_StateTransitioner,
           OVM_StateManager,
@@ -266,11 +260,9 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
           StateTransitionPhase.PRE_EXECUTION
         ) {
           try {
-            this.logger.interesting(
-              `Fraud proof is now in the PRE_EXECUTION phase.`
-            )
+            this.logger.info('Fraud proof is now in the PRE_EXECUTION phase.')
 
-            this.logger.interesting(`Proving account states...`)
+            this.logger.info('Proving account states...')
             await this._proveAccountStates(
               OVM_StateTransitioner,
               OVM_StateManager,
@@ -278,14 +270,14 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
               fraudulentStateRootIndex
             )
 
-            this.logger.interesting(`Proving storage slot states...`)
+            this.logger.info('Proving storage slot states...')
             await this._proveContractStorageStates(
               OVM_StateTransitioner,
               OVM_StateManager,
               proof.stateDiffProof.accountStateProofs
             )
 
-            this.logger.interesting(`Executing transaction...`)
+            this.logger.info('Executing transaction...')
             try {
               await (
                 await OVM_StateTransitioner.applyTransaction(
@@ -304,7 +296,7 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
               )
             }
 
-            this.logger.success(`Transaction successfully executed.`)
+            this.logger.info('Transaction successfully executed.')
           } catch (err) {
             if (
               err
@@ -318,8 +310,8 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
                   '46756e6374696f6e206d7573742062652063616c6c656420647572696e672074686520636f72726563742070686173652e'
                 )
             ) {
-              this.logger.interesting(
-                `Phase was completed by someone else, moving on.`
+              this.logger.info(
+                'Phase was completed by someone else, moving on.'
               )
             } else {
               throw err
@@ -333,11 +325,9 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
           StateTransitionPhase.POST_EXECUTION
         ) {
           try {
-            this.logger.interesting(
-              `Fraud proof is now in the POST_EXECUTION phase.`
-            )
+            this.logger.info('Fraud proof is now in the POST_EXECUTION phase.')
 
-            this.logger.interesting(`Committing storage slot state updates...`)
+            this.logger.info('Committing storage slot state updates...')
             await this._updateContractStorageStates(
               OVM_StateTransitioner,
               OVM_StateManager,
@@ -345,7 +335,7 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
               proof.storageTries
             )
 
-            this.logger.interesting(`Committing account state updates...`)
+            this.logger.info('Committing account state updates...')
             await this._updateAccountStates(
               OVM_StateTransitioner,
               OVM_StateManager,
@@ -353,7 +343,7 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
               proof.stateTrie
             )
 
-            this.logger.interesting(`Completing the state transition...`)
+            this.logger.info('Completing the state transition...')
             try {
               await (await OVM_StateTransitioner.completeTransition()).wait()
             } catch (err) {
@@ -361,8 +351,8 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
                 await OVM_StateTransitioner.callStatic.completeTransition()
               } catch (err) {
                 if (err.toString().includes('Reverted 0x')) {
-                  this.logger.interesting(
-                    `State transition was completed by someone else, moving on.`
+                  this.logger.info(
+                    'State transition was completed by someone else, moving on.'
                   )
                 } else {
                   throw err
@@ -370,7 +360,7 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
               }
             }
 
-            this.logger.success(`State transition completed.`)
+            this.logger.info('State transition completed.')
           } catch (err) {
             if (
               err
@@ -384,8 +374,8 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
                   '46756e6374696f6e206d7573742062652063616c6c656420647572696e672074686520636f72726563742070686173652e'
                 )
             ) {
-              this.logger.interesting(
-                `Phase was completed by someone else, moving on.`
+              this.logger.info(
+                'Phase was completed by someone else, moving on.'
               )
             } else {
               throw err
@@ -398,9 +388,9 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
           (await OVM_StateTransitioner.phase()) ===
           StateTransitionPhase.COMPLETE
         ) {
-          this.logger.interesting(`Fraud proof is now in the COMPLETE phase.`)
+          this.logger.info('Fraud proof is now in the COMPLETE phase.')
 
-          this.logger.interesting(`Attempting to finalize the fraud proof...`)
+          this.logger.info('Attempting to finalize the fraud proof...')
           try {
             await this._finalizeFraudVerification(
               proof.preStateRootProof,
@@ -408,14 +398,14 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
               proof.transactionProof.transaction
             )
 
-            this.logger.success(`Fraud proof finalized! Congrats.`)
+            this.logger.info('Fraud proof finalized! Congrats.')
           } catch (err) {
             if (
               err.toString().includes('Invalid batch header.') ||
               err.toString().includes('Index out of bounds.') ||
               err.toString().includes('Reverted 0x')
             ) {
-              this.logger.success(`Fraud proof was finalized by someone else.`)
+              this.logger.info('Fraud proof was finalized by someone else.')
             } else {
               throw err
             }
@@ -424,11 +414,9 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
 
         this.state.nextUnverifiedStateRoot = proof.preStateRootProof.stateRootBatchHeader.prevTotalElements.toNumber()
       } catch (err) {
-        this.logger.error(
-          `Caught an unhandled error, see error log below:\n\n${
-            err.stack || err
-          }\n`
-        )
+        this.logger.error('Caught an unhandled error', {
+          err,
+        })
       }
     }
   }
@@ -449,7 +437,7 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
 
       for (let i = 0; i < nextBatchHeader.batchSize.toNumber(); i++) {
         const index = i + nextBatchHeader.prevTotalElements.toNumber()
-        this.logger.info(`Checking state root for mismatch: ${index}`)
+        this.logger.info('Checking state root for mismatch', { index })
 
         const l1StateRoot = nextBatchStateRoots[i]
         const l2StateRoot = await this.state.l2Provider.getStateRoot(
@@ -457,12 +445,12 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
         )
 
         if (l1StateRoot !== l2StateRoot) {
-          this.logger.info(`State roots don't match 𐄂`)
-          this.logger.interesting(`L1 State Root: ${l1StateRoot}`)
-          this.logger.interesting(`L2 State Root: ${l2StateRoot}`)
+          this.logger.info('State roots do not match')
+          this.logger.info('L1 State Root', { l1StateRoot })
+          this.logger.info('L2 State Root', { l2StateRoot })
           return index
         } else {
-          this.logger.info(`State root was not mismatched ✓`)
+          this.logger.info('State root was not mismatched ✓')
         }
       }
 
@@ -483,22 +471,22 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
   private async _getFraudProofData(
     transactionIndex: number
   ): Promise<FraudProofData> {
-    this.logger.info(`Getting pre-state root inclusion proof...`)
+    this.logger.info('Getting pre-state root inclusion proof...')
     const preStateRootProof = await this.state.l1Provider.getStateRootBatchProof(
       transactionIndex - 1
     )
 
-    this.logger.info(`Getting post-state root inclusion proof...`)
+    this.logger.info('Getting post-state root inclusion proof...')
     const postStateRootProof = await this.state.l1Provider.getStateRootBatchProof(
       transactionIndex
     )
 
-    this.logger.info(`Getting transaction inclusion proof...`)
+    this.logger.info('Getting transaction inclusion proof...')
     const transactionProof = await this.state.l1Provider.getTransactionBatchProof(
       transactionIndex
     )
 
-    this.logger.info(`Getting state diff proof...`)
+    this.logger.info('Getting state diff proof...')
     const stateDiffProof: StateDiffProof = await this.state.l2Provider.getStateDiffProof(
       transactionIndex + this.options.l2BlockOffset - 1
     )
@@ -529,7 +517,7 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
     OVM_StateTransitioner: Contract
     OVM_StateManager: Contract
   }> {
-    this.logger.info(`Loading the state transitioner...`)
+    this.logger.info('Loading the state transitioner...')
 
     const stateTransitionerAddress = await this._getStateTransitioner(
       preStateRoot,
@@ -542,11 +530,9 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
       this.options.l1RpcProvider
     ).connect(this.options.l1Wallet)
 
-    this.logger.info(
-      `State transitioner is at address: ${stateTransitionerAddress}`
-    )
+    this.logger.info('State transitioner', { stateTransitionerAddress })
 
-    this.logger.info(`Loading the corresponding state manager...`)
+    this.logger.info('Loading the corresponding state manager...')
 
     const stateManagerAddress = await OVM_StateTransitioner.ovmStateManager()
     const OVM_StateManager = loadContract(
@@ -555,7 +541,7 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
       this.options.l1RpcProvider
     ).connect(this.options.l1Wallet)
 
-    this.logger.info(`State manager is at address: ${stateManagerAddress}`)
+    this.logger.info('State manager', { stateManagerAddress })
 
     return {
       OVM_StateTransitioner,
@@ -652,13 +638,13 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
     fraudulentStateRootIndex: number
   ): Promise<void> {
     for (const accountStateProof of shuffle(accountStateProofs)) {
-      this.logger.info(
-        `Attempting to prove account state: ${accountStateProof.address}`
-      )
+      this.logger.info('Attempting to prove account state', {
+        address: accountStateProof.address,
+      })
 
       if (await OVM_StateManager.hasAccount(accountStateProof.address)) {
         this.logger.info(
-          `Someone else already proved this account, skipping...`
+          'Someone else already proved this account, skipping...'
         )
         continue
       }
@@ -670,9 +656,9 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
 
       let ethContractAddress = '0x0000c0De0000C0DE0000c0de0000C0DE0000c0De'
       if (accountCode !== '0x') {
-        this.logger.info(`Need to deploy a copy of the account first...`)
+        this.logger.info('Need to deploy a copy of the account first...')
         ethContractAddress = await this._deployContractCode(accountCode)
-        this.logger.info(`Deployed a copy of the account, attempting proof...`)
+        this.logger.info('Deployed a copy of the account, attempting proof...')
       }
 
       try {
@@ -684,7 +670,7 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
           )
         ).wait()
 
-        this.logger.success(`Account state proven.`)
+        this.logger.info('Account state proven.')
       } catch (err) {
         try {
           await OVM_StateTransitioner.callStatic.proveContractState(
@@ -698,7 +684,7 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
             err.toString().includes('Reverted 0x')
           ) {
             this.logger.info(
-              `Someone else has already proven this account, skipping.`
+              'Someone else has already proven this account, skipping.'
             )
           } else {
             throw err
@@ -721,11 +707,11 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
   ): Promise<void> {
     for (const accountStateProof of shuffle(accountStateProofs)) {
       for (const slot of shuffle(accountStateProof.storageProof)) {
-        this.logger.info(`Attempting to prove slot.`)
-        this.logger.info(`Address: ${accountStateProof.address}`)
-        this.logger.info(`Key: ${slot.key}`)
-        this.logger.info(`Value: ${slot.value}`)
-
+        this.logger.info('Attempting to prove slot.', {
+          address: accountStateProof.address,
+          key: slot.key,
+          value: slot.value,
+        })
         if (
           await OVM_StateManager.hasContractStorage(
             accountStateProof.address,
@@ -733,7 +719,7 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
           )
         ) {
           this.logger.info(
-            `Someone else has already proven this slot, skipping...`
+            'Someone else has already proven this slot, skipping...'
           )
           continue
         }
@@ -747,7 +733,7 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
             )
           ).wait()
 
-          this.logger.success(`Slot value proven.`)
+          this.logger.info('Slot value proven.')
         } catch (err) {
           try {
             await OVM_StateTransitioner.callStatic.proveStorageSlot(
@@ -763,7 +749,7 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
               err.toString().includes('Reverted 0x')
             ) {
               this.logger.info(
-                `Someone else has already proven this slot, skipping.`
+                'Someone else has already proven this slot, skipping.'
               )
             } else {
               throw err
@@ -857,12 +843,13 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
         nextUncommittedAccount.address
       )
 
-      this.logger.info(`Attempting to commit account.`)
-      this.logger.info(`Address: ${nextUncommittedAccount.address}`)
-      this.logger.info(`Balance: ${updatedAccountState.balance}`)
-      this.logger.info(`Nonce: ${updatedAccountState.nonce}`)
-      this.logger.info(`Storage Root: ${updatedAccountState.storageRoot}`)
-      this.logger.info(`Code Hash: ${updatedAccountState.codeHash}`)
+      this.logger.info('Attempting to commit account.', {
+        address: nextUncommittedAccount.address,
+        balance: updatedAccountState.balance,
+        nonce: updatedAccountState.nonce,
+        storageRoot: updatedAccountState.storageRoot,
+        codeHash: updatedAccountState.codeHash,
+      })
 
       try {
         await (
@@ -875,7 +862,7 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
           )
         ).wait()
 
-        this.logger.success(`Account committed.`)
+        this.logger.info('Account committed.')
       } catch (err) {
         try {
           await OVM_StateTransitioner.callStatic.commitContractState(
@@ -897,7 +884,7 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
             err.toString().includes('Reverted 0x')
           ) {
             this.logger.info(
-              `Could not commit account because another commitment invalidated our proof, skipping for now...`
+              'Could not commit account because another commitment invalidated our proof, skipping for now...'
             )
           } else {
             throw err
@@ -993,10 +980,11 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
           nextUncommittedStorageProof.key
         )
 
-        this.logger.info(`Attempting to commit storage slot.`)
-        this.logger.info(`Address: ${accountStateProof.address}`)
-        this.logger.info(`Key: ${nextUncommittedStorageProof.key}`)
-        this.logger.info(`Value: ${updatedSlotValue}`)
+        this.logger.info('Attempting to commit storage slot.', {
+          address: accountStateProof.address,
+          key: nextUncommittedStorageProof.key,
+          value: updatedSlotValue,
+        })
 
         try {
           await (
@@ -1010,7 +998,7 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
             )
           ).wait()
 
-          this.logger.success(`Storage slot committed.`)
+          this.logger.info('Storage slot committed.')
         } catch (err) {
           try {
             await OVM_StateTransitioner.callStatic.commitStorageSlot(
@@ -1033,7 +1021,7 @@ export class FraudProverService extends BaseService<FraudProverOptions> {
               err.toString().includes('Reverted 0x')
             ) {
               this.logger.info(
-                `Could not commit slot because another commitment invalidated our proof, skipping for now...`
+                'Could not commit slot because another commitment invalidated our proof, skipping for now...'
               )
             } else {
               throw err
