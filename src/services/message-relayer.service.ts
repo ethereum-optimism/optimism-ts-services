@@ -82,14 +82,12 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
   }
 
   protected async _init(): Promise<void> {
-    this.logger.info(
-      `Initializing message relayer with options: ${this.options}`
-    )
+    this.logger.info('Initializing message relayer', { options: this.options })
     // Need to improve this, sorry.
     this.state = {} as any
 
     const address = await this.options.l1Wallet.getAddress()
-    this.logger.info(`Using L1 EOA: ${address}`)
+    this.logger.info('Using L1 EOA', { address })
 
     this.state.Lib_AddressManager = loadContract(
       'Lib_AddressManager',
@@ -103,9 +101,9 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
       this.state.Lib_AddressManager,
       this.options.l1RpcProvider
     )
-    this.logger.info(
-      `Connected to OVM_StateCommitmentChain at address: ${this.state.OVM_StateCommitmentChain.address}`
-    )
+    this.logger.info('Connected to OVM_StateCommitmentChain', {
+      address: this.state.OVM_StateCommitmentChain.address,
+    })
 
     this.logger.info('Connecting to OVM_L1CrossDomainMessenger...')
     this.state.OVM_L1CrossDomainMessenger = await loadProxyFromManager(
@@ -114,9 +112,9 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
       this.state.Lib_AddressManager,
       this.options.l1RpcProvider
     )
-    this.logger.info(
-      `Connected to OVM_L1CrossDomainMessenger at address: ${this.state.OVM_L1CrossDomainMessenger.address}`
-    )
+    this.logger.info('Connected to OVM_L1CrossDomainMessenger', {
+      address: this.state.OVM_L1CrossDomainMessenger.address,
+    })
 
     this.logger.info('Connecting to OVM_L2CrossDomainMessenger...')
     this.state.OVM_L2CrossDomainMessenger = await loadContractFromManager(
@@ -124,9 +122,9 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
       this.state.Lib_AddressManager,
       this.options.l2RpcProvider
     )
-    this.logger.info(
-      `Connected to OVM_L2CrossDomainMessenger at address: ${this.state.OVM_L2CrossDomainMessenger.address}`
-    )
+    this.logger.info('Connected to OVM_L2CrossDomainMessenger', {
+      address: this.state.OVM_L2CrossDomainMessenger.address,
+    })
 
     this.logger.info('Connecting to OVM_L2ToL1MessagePasser...')
     this.state.OVM_L2ToL1MessagePasser = loadContract(
@@ -134,11 +132,11 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
       '0x4200000000000000000000000000000000000000',
       this.options.l2RpcProvider
     )
-    this.logger.info(
-      `Connected to OVM_L2ToL1MessagePasser at address: ${this.state.OVM_L2ToL1MessagePasser.address}`
-    )
+    this.logger.info('Connected to OVM_L2ToL1MessagePasser', {
+      address: this.state.OVM_L2ToL1MessagePasser.address,
+    })
 
-    this.logger.success('Connected to all contracts.')
+    this.logger.info('Connected to all contracts.')
 
     if (this.options.spreadsheetMode) {
       this.logger.info('Running in spreadsheet mode')
@@ -163,11 +161,10 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
             this.state.nextUnfinalizedTxHeight
           ))
         ) {
-          this.logger.info(
-            `Didn't find any newly finalized transactions. Trying again in ${Math.floor(
-              this.options.pollingInterval / 1000
-            )} seconds...`
-          )
+          this.logger.info('Did not find any newly finalized transactions', {
+            retryAgainInS: Math.floor(this.options.pollingInterval / 1000),
+          })
+
           continue
         }
 
@@ -179,17 +176,17 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
             await this._getStateBatchHeader(this.state.nextUnfinalizedTxHeight)
           ).batch.batchSize.toNumber()
           this.logger.info(
-            `Found a batch with ${size} finalized transaction(s), checking for more...`
+            'Found a batch of finalized transaction(s), checking for more...',
+            { batchSize: size }
           )
           this.state.nextUnfinalizedTxHeight += size
         }
 
-        this.logger.interesting(
-          `Found a total of ${
+        this.logger.info('Found finalized transactions', {
+          totalNumber:
             this.state.nextUnfinalizedTxHeight -
-            this.state.lastFinalizedTxHeight
-          } finalized transaction(s).`
-        )
+            this.state.lastFinalizedTxHeight,
+        })
 
         const messages = await this._getSentMessages(
           this.state.lastFinalizedTxHeight,
@@ -197,44 +194,39 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
         )
 
         if (messages.length === 0) {
-          this.logger.interesting(
-            `Didn't find any L2->L1 messages. Trying again in ${Math.floor(
-              this.options.pollingInterval / 1000
-            )} seconds...`
-          )
+          this.logger.info('Did not find any L2->L1 messages', {
+            retryAgainInS: Math.floor(this.options.pollingInterval / 1000),
+          })
         }
 
         for (const message of messages) {
-          this.logger.interesting(
-            `Found a message sent during transaction: ${message.parentTransactionIndex}`
-          )
+          this.logger.info('Found a message sent during transaction', {
+            index: message.parentTransactionIndex,
+          })
           if (await this._wasMessageRelayed(message)) {
-            this.logger.interesting(
-              `Message has already been relayed, skipping.`
-            )
+            this.logger.info('Message has already been relayed, skipping.')
             continue
           }
 
-          this.logger.interesting(
-            `Message not yet relayed. Attempting to generate a proof...`
+          this.logger.info(
+            'Message not yet relayed. Attempting to generate a proof...'
           )
           const proof = await this._getMessageProof(message)
-          this.logger.interesting(
-            `Successfully generated a proof. Attempting to relay to Layer 1...`
+          this.logger.info(
+            'Successfully generated a proof. Attempting to relay to Layer 1...'
           )
 
           await this._relayMessageToL1(message, proof)
         }
 
-        this.logger.interesting(
-          `Finished searching through newly finalized transactions. Trying again in ${Math.floor(
-            this.options.pollingInterval / 1000
-          )} seconds...`
+        this.logger.info(
+          'Finished searching through newly finalized transactions',
+          {
+            retryAgainInS: Math.floor(this.options.pollingInterval / 1000),
+          }
         )
       } catch (err) {
-        this.logger.error(
-          `Caught an unhandled error, see error log below:\n\n${err}\n`
-        )
+        this.logger.error('Caught an unhandled error', { err })
       }
     }
   }
@@ -255,11 +247,11 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
       startingBlock < (await this.options.l1RpcProvider.getBlockNumber())
     ) {
       this.state.lastQueriedL1Block = startingBlock
-      this.logger.info(
-        `Querying events from L1 block ${startingBlock} to ${
-          startingBlock + this.options.getLogsInterval
-        }...`
-      )
+      this.logger.info('Querying events', {
+        startingBlock,
+        endBlock: startingBlock + this.options.getLogsInterval,
+      })
+
       const events: ethers.Event[] = await this.state.OVM_StateCommitmentChain.queryFilter(
         filter,
         startingBlock,
@@ -307,16 +299,14 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
   }
 
   private async _isTransactionFinalized(height: number): Promise<boolean> {
-    this.logger.info(`Checking if tx is finalized at height: ${height}`)
+    this.logger.info('Checking if tx is finalized', { height })
     const header = await this._getStateBatchHeader(height)
 
     if (header === undefined) {
-      this.logger.info(`No state batch header found.`)
+      this.logger.info('No state batch header found.')
       return false
     } else {
-      this.logger.info(
-        `Got state batch header: ${JSON.stringify(header, null, 2)}`
-      )
+      this.logger.info('Got state batch header', { header })
     }
 
     return !(await this.state.OVM_StateCommitmentChain.insideFraudProofWindow(
@@ -483,9 +473,7 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
           'Proof should succeed. Submitting for real this time...'
         )
       } catch (err) {
-        this.logger.error(
-          `Proof would fail, skipping. See error message below:\n\n${err.message}\n`
-        )
+        this.logger.error('Proof would fail, skipping', { err })
         return
       }
 
@@ -505,16 +493,14 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
       try {
         const receipt = await result.wait()
 
-        this.logger.interesting(
-          `Relay message transaction sent, hash is: ${receipt.transactionHash}`
-        )
+        this.logger.info('Relay message transaction sent', {
+          transactionHash: receipt.transactionHash,
+        })
       } catch (err) {
-        this.logger.error(
-          `Real relay attempt failed, skipping. See error message below:\n\n${err.message}\n`
-        )
+        this.logger.error('Real relay attempt failed, skipping.', { err })
         return
       }
-      this.logger.success(`Message successfully relayed to Layer 1!`)
+      this.logger.info('Message successfully relayed to Layer 1!')
     }
   }
 }
