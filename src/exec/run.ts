@@ -37,9 +37,6 @@ const main = async () => {
   if (!L2_NODE_WEB3_URL) {
     throw new Error('Must pass L2_NODE_WEB3_URL')
   }
-  if (!L1_WALLET_KEY) {
-    throw new Error('Must pass L1_WALLET_KEY')
-  }
 
   const l2Provider = new JsonRpcProvider(L2_NODE_WEB3_URL)
   const l1Provider = new JsonRpcProvider(L1_NODE_WEB3_URL)
@@ -53,7 +50,7 @@ const main = async () => {
     wallet = Wallet.fromMnemonic(MNEMONIC, HD_PATH)
     wallet = wallet.connect(l1Provider)
   } else {
-    throw new Error('Must pass one of L1_PRIVATE_KEY or MNEMONIC')
+    throw new Error('Must pass one of L1_WALLET_KEY or MNEMONIC')
   }
 
   let spreadsheet = null
