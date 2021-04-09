@@ -361,7 +361,6 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
       ) + '00'.repeat(32)
     )
 
-    // TODO: Complain if the proof doesn't exist.
     const proof = await this.options.l2RpcProvider.send('eth_getProof', [
       this.state.OVM_L2ToL1MessagePasser.address,
       [messageSlot],
@@ -374,10 +373,23 @@ export class MessageRelayerService extends BaseService<MessageRelayerOptions> {
           .replace(/^0+/, ''),
     ])
 
-    // TODO: Complain if the batch doesn't exist.
+    if (proof === undefined) {
+      throw new Error(`_getMessageProof::eth_getProof did not return proof.`)
+    } else {
+      this.logger.info('_getMessageProof::eth_getProof got proof.')
+    }
+
     const header = await this._getStateBatchHeader(
       message.parentTransactionIndex
     )
+
+    if (header === undefined) {
+      throw new Error(
+        `_getMessageProof::_getStateBatchHeader did not return header.`
+      )
+    } else {
+      this.logger.info('_getMessageProof::_getStateBatchHeader got header.')
+    }
 
     const elements = []
     for (
